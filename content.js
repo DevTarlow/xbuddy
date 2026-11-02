@@ -1,7 +1,12 @@
 // ===== X Buddy — Content Script =====
 // Injects keyword highlighting and Magic Reply into x.com (Twitter)
 
+// Keep these storage keys in sync with popup.js and background.js.
 const STORAGE_KEY = 'xbBuddyKeywords';
+const NEGATIVE_STORAGE_KEY = 'xbBuddyNegativeKeywords';
+const ENABLED_KEY = 'xbBuddyEnabled';
+const POSITIVE_ENABLED_KEY = 'xbBuddyPositiveEnabled';
+const NEGATIVE_ENABLED_KEY = 'xbBuddyNegativeEnabled';
 const PROCESSED_ATTR = 'data-xb-processed';
 const MAGIC_REPLY_ATTR = 'data-magic-reply';
 
@@ -22,11 +27,16 @@ const DIALOG_SELECTORS = [
 ];
 
 // --- State ---
-let keywordSet = new Set();            // O(1) lookups (lowercased)
-let keywordList = [];                  // original casing for display
+let keywordList = [];                  // positive keywords, original casing
+let negativeKeywordList = [];          // negative keywords, original casing
+let positiveEnabled = true;
+let negativeEnabled = true;
+let enabled = true;
 let processedPosts = new WeakSet();    // prevent re-processing
 let processedDialogs = new WeakSet();  // prevent re-injecting buttons
 let observer = null;
+let safetyInterval = null;
+let reprocessTimer = null;
 
 // Debug logging toggle — set to true to see what the extension is doing
 const DEBUG = false;
@@ -58,68 +68,162 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 
   try {
-    await loadKeywords();
+    await loadSettings();
     listenForStorageChanges();
-    startMutationObserver();
+
+    if (!enabled) {
+      debug('Extension disabled on load');
+      return;
+    }
 
     // Initial pass — the page may already have content
     debug('Initial scan starting...');
-    if (keywordSet.size > 0) {
-      debug(`Keywords loaded: ${[...keywordSet].join(', ')}`);
-    } else {
-      debug('No keywords loaded yet.');
-    }
+    debug(`Positive keywords: ${keywordList.join(', ') || '(none)'}`);
+    debug(`Negative keywords: ${negativeKeywordList.join(', ') || '(none)'}`);
+
+    startMutationObserver();
+    startSafetyChecks();
     scanAllPosts();
     scanAllDialogs();
     scanInlineComposers();
-
-    // Safety net: re-scan periodically for the first 15 seconds
-    // (catches posts that React might render after our initial scan)
-    let safetyChecks = 0;
-    const safetyInterval = setInterval(() => {
-      safetyChecks++;
-      scanAllPosts();
-      scanAllDialogs();
-      scanInlineComposers();
-      if (safetyChecks >= 5) { // stop after ~15s
-        clearInterval(safetyInterval);
-      }
-    }, 3000);
   } catch (err) {
     console.error('[X Buddy] Initialization failed:', err);
   }
 })();
 
 // ===================================================================
-//  KEYWORD LOADING
+//  SETTINGS LOADING
 // ===================================================================
 
-async function loadKeywords() {
+function normalizeKeywordList(arr) {
+  if (!Array.isArray(arr)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const item of arr) {
+    if (typeof item !== 'string') continue;
+    const keyword = item.trim();
+    if (!keyword) continue;
+    const lower = keyword.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    out.push(keyword);
+  }
+  return out;
+}
+
+async function loadSettings() {
+  enabled = true;
+  positiveEnabled = true;
+  negativeEnabled = true;
   try {
-    const result = await chrome.storage.local.get(STORAGE_KEY);
-    const arr = result[STORAGE_KEY] || [];
-    keywordList = arr;
-    keywordSet = new Set(arr.map(k => k.toLowerCase()));
+    const result = await chrome.storage.local.get([
+      STORAGE_KEY,
+      NEGATIVE_STORAGE_KEY,
+      ENABLED_KEY,
+      POSITIVE_ENABLED_KEY,
+      NEGATIVE_ENABLED_KEY,
+    ]);
+    keywordList = normalizeKeywordList(result[STORAGE_KEY] || []);
+    negativeKeywordList = normalizeKeywordList(result[NEGATIVE_STORAGE_KEY] || []);
+    enabled = result[ENABLED_KEY] !== false;
+    positiveEnabled = result[POSITIVE_ENABLED_KEY] !== false;
+    negativeEnabled = result[NEGATIVE_ENABLED_KEY] !== false;
   } catch (err) {
-    console.warn('[X Buddy] Could not load keywords:', err);
+    console.warn('[X Buddy] Could not load settings:', err);
     keywordList = [];
-    keywordSet = new Set();
+    negativeKeywordList = [];
   }
 }
 
 function listenForStorageChanges() {
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes[STORAGE_KEY]) {
-      const arr = changes[STORAGE_KEY].newValue || [];
-      keywordList = arr;
-      keywordSet = new Set(arr.map(k => k.toLowerCase()));
+    if (area !== 'local') return;
 
-      // Re-evaluate every post — an already-scanned post can start or stop
-      // matching when the keyword list changes.
-      resetPostProcessing();
-      scanAllPosts();
+    if (changes[ENABLED_KEY] !== undefined) {
+      const now = changes[ENABLED_KEY].newValue !== false;
+      if (now !== enabled) {
+        enabled = now;
+        debug('Extension', enabled ? 'enabled' : 'disabled');
+        if (enabled) {
+          enableExtension();
+        } else {
+          disableExtension();
+        }
+        return;
+      }
+    }
+
+    if (!enabled) return;
+
+    if (changes[POSITIVE_ENABLED_KEY] !== undefined) {
+      positiveEnabled = changes[POSITIVE_ENABLED_KEY].newValue !== false;
+      debug('Positive highlighting', positiveEnabled ? 'enabled' : 'disabled');
+      scheduleReprocess();
+    }
+
+    if (changes[NEGATIVE_ENABLED_KEY] !== undefined) {
+      negativeEnabled = changes[NEGATIVE_ENABLED_KEY].newValue !== false;
+      debug('Negative filtering', negativeEnabled ? 'enabled' : 'disabled');
+      scheduleReprocess();
+    }
+
+    if (changes[STORAGE_KEY] !== undefined) {
+      keywordList = normalizeKeywordList(changes[STORAGE_KEY].newValue || []);
+      scheduleReprocess();
+    }
+
+    if (changes[NEGATIVE_STORAGE_KEY] !== undefined) {
+      negativeKeywordList = normalizeKeywordList(changes[NEGATIVE_STORAGE_KEY].newValue || []);
+      scheduleReprocess();
     }
   });
+}
+
+async function enableExtension() {
+  await loadSettings();
+  if (!enabled) return;
+  resetPostProcessing();
+  startMutationObserver();
+  startSafetyChecks();
+  scanAllPosts();
+  scanAllDialogs();
+  scanInlineComposers();
+}
+
+function disableExtension() {
+  debug('disableExtension');
+
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+  if (safetyInterval) {
+    clearInterval(safetyInterval);
+    safetyInterval = null;
+  }
+  if (reprocessTimer) {
+    clearTimeout(reprocessTimer);
+    reprocessTimer = null;
+  }
+
+  resetPostProcessing();
+
+  document.querySelectorAll('.magic-reply-btn').forEach((el) => el.remove());
+  document.querySelectorAll(`[${MAGIC_REPLY_ATTR}]`).forEach((el) => {
+    el.removeAttribute(MAGIC_REPLY_ATTR);
+  });
+  processedDialogs = new WeakSet();
+}
+
+function scheduleReprocess() {
+  if (!enabled) return;
+  if (reprocessTimer) clearTimeout(reprocessTimer);
+  reprocessTimer = setTimeout(() => {
+    reprocessTimer = null;
+    if (!enabled) return;
+    resetPostProcessing();
+    scanAllPosts();
+  }, 100);
 }
 
 // ===================================================================
@@ -127,6 +231,7 @@ function listenForStorageChanges() {
 // ===================================================================
 
 function startMutationObserver() {
+  if (!enabled) return;
   if (observer) observer.disconnect();
 
   let pending = false;
@@ -159,6 +264,7 @@ function startMutationObserver() {
   }
 
   observer = new MutationObserver((mutations) => {
+    if (!enabled) return;
     if (!hasRelevantMutation) {
       hasRelevantMutation = hasNewTweetNodes(mutations);
     }
@@ -186,6 +292,33 @@ function startMutationObserver() {
   });
 }
 
+function startSafetyChecks() {
+  if (!enabled) return;
+  if (safetyInterval) {
+    clearInterval(safetyInterval);
+    safetyInterval = null;
+  }
+
+  // Re-scan periodically for the first ~15 seconds. This catches posts that
+  // React mounts after our initial pass.
+  let checks = 0;
+  safetyInterval = setInterval(() => {
+    if (!enabled) {
+      clearInterval(safetyInterval);
+      safetyInterval = null;
+      return;
+    }
+    checks++;
+    scanAllPosts();
+    scanAllDialogs();
+    scanInlineComposers();
+    if (checks >= 5) {
+      clearInterval(safetyInterval);
+      safetyInterval = null;
+    }
+  }, 3000);
+}
+
 // ===================================================================
 //  POST SCANNING & HIGHLIGHTING
 // ===================================================================
@@ -197,10 +330,14 @@ function resetPostProcessing() {
   for (const el of document.querySelectorAll('.xb-glow-post')) {
     el.classList.remove('xb-glow-post');
   }
+  for (const el of document.querySelectorAll('.xb-hidden-post')) {
+    el.classList.remove('xb-hidden-post');
+  }
   processedPosts = new WeakSet();
 }
 
 function scanAllPosts() {
+  if (!enabled) return;
   const allSelectors = POST_SELECTORS.join(',');
   const containers = document.querySelectorAll(allSelectors);
   let totalFound = 0;
@@ -243,15 +380,25 @@ function isWholeWordMatch(text, keyword) {
   // Escape regex special characters in the keyword
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   try {
-    // \b ensures word boundary matching — "ai" matches "AI" but not "traill" or "rain"
-    return new RegExp(`\\b${escaped}\\b`, 'iu').test(text);
+    // \b only works when the keyword starts/ends with a word character.
+    // Hashtags and terms like "C++" need an open boundary on that side.
+    const lead = /^\w/.test(keyword) ? '\\b' : '';
+    const trail = /\w$/.test(keyword) ? '\\b' : '';
+    return new RegExp(`${lead}${escaped}${trail}`, 'iu').test(text);
   } catch {
     // Fallback to substring if regex is somehow invalid
     return text.toLowerCase().includes(keyword.toLowerCase());
   }
 }
 
-function processPost(container) {
+function findKeywordMatch(text, list) {
+  for (const kw of list) {
+    if (isWholeWordMatch(text, kw)) return kw;
+  }
+  return null;
+}
+
+function extractPostBodyText(container) {
   // Extract text content — try multiple strategies
   let postText = '';
   const textEl = container.querySelector('[data-testid="tweetText"]');
@@ -265,11 +412,31 @@ function processPost(container) {
       postText = Array.from(paras).map(p => p.textContent).join(' ').trim();
     }
   }
-  if (!postText.trim()) {
-    // Fallback 2: get all text content (ignore very short results)
-    const allText = container.textContent.trim();
-    if (allText.length > 30) postText = allText;
+  if (postText.trim()) {
+    return { text: postText.trim(), fromBody: true };
   }
+  // Fallback 2: get all text content (ignore very short results). This can
+  // include author names and UI labels, so negative matching ignores it.
+  const allText = container.textContent.trim();
+  if (allText.length > 30) return { text: allText, fromBody: false };
+  return { text: '', fromBody: false };
+}
+
+function getHideTarget(container) {
+  const post = container.matches('article, [data-testid="tweet"], [role="article"]')
+    ? container
+    : container.closest('article, [data-testid="tweet"], [role="article"]') || container;
+
+  // Hide the whole timeline cell so no empty row is left behind.
+  const cell = post.closest('div[data-testid="cellInnerDiv"]');
+  if (cell && !cell.querySelector('div[contenteditable="true"]')) return cell;
+  return post;
+}
+
+function processPost(container) {
+  if (!enabled) return;
+
+  const { text: postText, fromBody } = extractPostBodyText(container);
   if (!postText.trim()) {
     // Do not mark this one: X may still be mounting the tweet text.
     debug('processPost: could not extract text from', container);
@@ -281,22 +448,25 @@ function processPost(container) {
   container.setAttribute(PROCESSED_ATTR, 'true');
   processedPosts.add(container);
 
-  // Check keywords (case-insensitive, whole-word matching)
-  let matched = false;
-  let matchedKeyword = '';
-  for (const kw of keywordSet) {
-    if (isWholeWordMatch(postText, kw)) {
-      matched = true;
-      matchedKeyword = kw;
-      break;
+  // Negative filter runs first: a post that matches both lists stays hidden.
+  if (negativeEnabled && fromBody && negativeKeywordList.length > 0) {
+    const matchedNegative = findKeywordMatch(postText, negativeKeywordList);
+    if (matchedNegative) {
+      container.classList.remove('xb-glow-post');
+      const hideTarget = getHideTarget(container);
+      if (hideTarget) hideTarget.classList.add('xb-hidden-post');
+      debug(`Hid post matching "${matchedNegative}": "${postText.substring(0, 60)}..."`);
+      return;
     }
   }
 
-  if (matched) {
-    container.classList.add('xb-glow-post');
-    debug(`Highlighted post matching "${matchedKeyword}": "${postText.substring(0, 60)}..."`);
+  if (positiveEnabled && keywordList.length > 0) {
+    const matchedPositive = findKeywordMatch(postText, keywordList);
+    if (matchedPositive) {
+      container.classList.add('xb-glow-post');
+      debug(`Highlighted post matching "${matchedPositive}": "${postText.substring(0, 60)}..."`);
+    }
   }
-  // No else — posts without a match are simply left unstyled.
 }
 
 // ===================================================================
@@ -304,6 +474,7 @@ function processPost(container) {
 // ===================================================================
 
 function scanAllDialogs() {
+  if (!enabled) return;
   for (const sel of DIALOG_SELECTORS) {
     const dialogs = document.querySelectorAll(sel);
     for (const dialog of dialogs) {
@@ -323,6 +494,7 @@ function scanAllDialogs() {
 // ===================================================================
 
 function scanInlineComposers() {
+  if (!enabled) return;
   // Only embed the button on reply surfaces. The home timeline's "Post"
   // composer is also a contenteditable with tweetButtonInline, but replying
   // there would draft a reply to an unrelated tweet.
@@ -435,6 +607,7 @@ function injectButtonNearComposer(dialog) {
 // ===================================================================
 
 async function handleMagicReplyClick(btn, dialog) {
+  if (!enabled) return;
   // 1. Extract post text. Prefer a tweet body inside the container (reply
   // dialog); otherwise use the tweet that precedes an inline composer. The
   // generic text walker is last because a composer container also contains
@@ -465,6 +638,9 @@ async function handleMagicReplyClick(btn, dialog) {
     // 3. Call local LLM
     console.log('[X Buddy] Post text for LLM:', postText);
     const reply = await generateReply(postText);
+
+    // The master toggle may have paused the extension while the LLM was working.
+    if (!enabled) return;
 
     if (!reply || reply.trim().length === 0) {
       throw new Error('Empty response from LLM');

@@ -11,6 +11,8 @@
 ## What it does
 
 - **Keyword glow.** Add words you care about and matching posts in your timeline get a green glow. Useful when you want to spot a topic without reading every post.
+- **Negative keywords.** Add words you never want to see and matching posts are hidden from the timeline. Turn the whole list off whenever you want it back.
+- **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting and negative filtering.
 - **Magic Reply.** Open a reply and click the Magic Reply button. Your local model writes a draft straight into the composer. You can edit it before posting.
 - **Stays local.** No accounts, no API keys, no tracking. Your keywords and posts go to the model on your computer and nowhere else.
 
@@ -56,6 +58,18 @@ Pin the extension to your toolbar so the popup is easy to reach.
 
 Posts already on the page update too, so you do not need to reload.
 
+### Hide posts you do not want
+
+1. Click the X Buddy icon
+2. Under **Negative Keywords**, type a word and press **Add**
+3. Posts matching that word disappear from the timeline
+
+The helper text under the section says it plainly: **Posts matching these keywords are hidden.** Remove the word, or flip the negative toggle off, and the posts come back. Positive and negative keywords both match whole words only, so `ai` will not match `rain`.
+
+### Pause everything
+
+The toggle next to the X Buddy title is the master switch. Turning it off removes highlighting, hidden posts, and Magic Reply buttons without deleting any settings. Turn it back on to restore them.
+
 ### Draft a reply
 
 1. Open a post's reply dialog, or open the post detail page
@@ -72,7 +86,9 @@ The reply goes into the composer, not straight to X. You always get the final sa
 | `Failed — Failed to fetch` | Make sure your LLM server is running on port 8080. Then reload the extension in `chrome://extensions` and refresh x.com. |
 | `Background unavailable — reload the extension` | The extension was reloaded while the tab stayed open. Refresh x.com. |
 | Popup says **Offline** | The server is not reachable at `http://localhost:8080`. Start it, then reopen the popup. |
-| No green glow | Check that the keyword is in the popup list. Keywords match whole words only, so `ai` will not match `rain`. |
+| No green glow | Check that the keyword is in the positive list and the positive toggle is on. Keywords match whole words only, so `ai` will not match `rain`. |
+| A post I want to read is hidden | Check the negative list and the negative toggle. A negative keyword wins over a positive glow. Remove the word, or turn negative filtering off, to bring the post back. |
+| A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
 
 ## Status
@@ -80,6 +96,8 @@ The reply goes into the composer, not straight to X. You always get the final sa
 X Buddy is an early build. What is done and what is next:
 
 - [x] Keyword highlighting
+- [x] Negative keyword filtering
+- [x] Master, positive, and negative toggles
 - [x] Magic Reply with a local model
 - [ ] Support X's new web layout
 - [ ] Settings page for the server URL and model

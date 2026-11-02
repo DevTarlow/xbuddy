@@ -1,6 +1,6 @@
 # X Buddy
 
-Chrome Manifest V3 extension that enhances X/Twitter with keyword highlighting and AI-powered replies via a local LLM.
+Chrome Manifest V3 extension that enhances X/Twitter with keyword highlighting, negative-keyword filtering, and AI-powered replies via a local LLM.
 
 ## Commands
 
@@ -41,6 +41,10 @@ There is no automated test suite. Before committing a behavior change, check:
 - The extension loads at `chrome://extensions` with no errors.
 - A matching keyword glows, including when the keyword is added after the page loaded.
 - Removing a keyword removes the glow.
+- A negative keyword hides matching posts, including posts added after the page loaded.
+- Removing a negative keyword, or turning negative filtering off, restores the posts.
+- The master toggle pauses and resumes highlighting, filtering, and Magic Reply.
+- The master, positive, and negative toggles keep their state after reopening the popup.
 - Magic Reply appears in a reply dialog and on a post detail page, but not in the home "Post" box.
 - Magic Reply fills the composer, the send button enables, and an existing draft is replaced rather than appended.
 - The popup shows the real LLM status.
@@ -50,13 +54,25 @@ There is no automated test suite. Before committing a behavior change, check:
 
 ```
 manifest.json          — MV3 manifest
-popup.html             — Popup UI (320px, dark theme)
-popup.js               — Popup logic: keyword CRUD, LLM connection check
-content.js             — Content script injected into x.com
+popup.html             — Popup UI (340px, dark theme)
+popup.js               — Popup logic: positive/negative keyword CRUD, toggles, LLM status
+content.js             — Content script: keyword glow/filter, Magic Reply
 background.js          — Service worker: local LLM request + health check
-styles.css             — Content script styles (glow + magic reply button)
+styles.css             — Content script styles (glow + hidden post + magic reply button)
 icons/                 — Extension icons (16, 48, 128 PNG)
 ```
+
+### Storage keys
+
+Keep these in sync across `content.js`, `popup.js`, and `background.js`:
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `xbBuddyKeywords` | `string[]` | `[]` | Positive keywords (glow) |
+| `xbBuddyNegativeKeywords` | `string[]` | `[]` | Negative keywords (hide) |
+| `xbBuddyEnabled` | `boolean` | `true` | Master pause/resume |
+| `xbBuddyPositiveEnabled` | `boolean` | `true` | Positive highlighting on/off |
+| `xbBuddyNegativeEnabled` | `boolean` | `true` | Negative filtering on/off |
 
 ## Code Conventions
 
@@ -70,12 +86,14 @@ icons/                 — Extension icons (16, 48, 128 PNG)
 ## Key Technical Details
 
 - **Tweet discovery**: `article[data-testid="tweet"]` via MutationObserver with 200ms cooldown. Relevance is checked against `MutationRecord.addedNodes` before scanning.
-- **Keyword matching**: `\b...\b` regex with `iu` flag — whole-word, case-insensitive, Unicode-aware. Regex special chars escaped.
+- **Keyword matching**: whole-word, case-insensitive regex with the `iu` flags. Regex special chars are escaped. The boundary is only added on a side that starts/ends with a word character, so `#AI`, `C++`, and `3.5` work while `ai` still does not match `rain`.
+- **Negative filtering**: Matching posts get `.xb-hidden-post` (`display: none !important`) on the nearest `div[data-testid="cellInnerDiv"]` timeline row, falling back to the tweet article when the row contains a composer. A negative match wins over a positive glow. Negative matching only uses tweet body text, not the container-wide fallback that can include author names or UI labels.
 - **Magic Reply injection**: Injects a `button.magic-reply-btn` near the send button in dialog and inline composers. Dialog detection uses `div[role="dialog"]` and `[data-testid="sheetDialog"]`.
 - **Inline composer edge case**: On tweet detail pages, the composer is inline (not in a dialog). The tweet text lives ABOVE the composer in the DOM — `findTweetTextBefore()` picks the last `[data-testid="tweetText"]` that precedes the composer. The button is only injected on reply surfaces (`/status/`, `/compose/post`, or `in_reply_to=`), not the home timeline's "Post" box.
 - **Text insertion**: X's composer is Draft.js, whose DOM is owned by React. `insertTextIntoReply()` dispatches a synthetic `paste` event (after focusing and selecting the draft) so Draft updates its own `EditorState` and enables the Reply button. Do NOT use `textContent`/`execCommand` on the Draft DOM — it desyncs React and throws `removeChild is not a child of this node`.
 - **LLM**: OpenAI-compatible endpoint at `http://localhost:8080` (model `gemma-4-E4B-it-QAT-Q4_0.gguf`), called from `background.js`. Content-script requests to loopback are blocked by Chrome's Local Network Access policy; the service worker has the `localhost` host permission and is allowed. Response parsing handles `message.content`, `delta.content`, `reasoning_content`, and fallback fields. `chat_template_kwargs.enable_thinking = false` disables Gemma's reasoning tokens (~10x faster replies).
-- **Keyword changes**: `resetPostProcessing()` clears `data-xb-processed` and `.xb-glow-post` before a rescan, so newly added keywords apply to already-rendered posts and removed keywords stop glowing.
+- **Keyword changes**: `resetPostProcessing()` clears `data-xb-processed`, `.xb-glow-post`, and `.xb-hidden-post` before a rescan, so newly added keywords apply to already-rendered posts and removed keywords stop glowing or hiding. Changes are debounced through `scheduleReprocess()`.
+- **Master toggle**: `disableExtension()` stops the observer and safety checks, clears every injected class/marker, and removes Magic Reply buttons. `enableExtension()` reloads settings and rescans. All scan functions are guarded by `enabled`.
 - **Security**: CSP in manifest restricts to `script-src 'self'`. Only `storage` permission is declared, plus host permissions for x.com/twitter.com and `localhost:8080`.
 - **Error boundary**: Global `error` and `unhandledrejection` listeners catch + log exceptions.
 
@@ -89,6 +107,7 @@ icons/                 — Extension icons (16, 48, 128 PNG)
 | `[data-testid="tweetButtonInline"]` | Send/Reply button |
 | `div[role="dialog"]` | Modal reply dialog |
 | `[data-testid="sheetDialog"]` | Bottom-sheet composer |
+| `div[data-testid="cellInnerDiv"]` | Timeline row; negative-filter hide target |
 
 ## Development
 
@@ -108,6 +127,8 @@ icons/                 — Extension icons (16, 48, 128 PNG)
 
 - **Add tweet selector**: Add to `POST_SELECTORS` array in `content.js`
 - **Change glow style**: Edit `.xb-glow-post` / `@keyframes xb-glow-pulse` in `styles.css`
+- **Change hidden style**: Edit `.xb-hidden-post` in `styles.css`; the hide target is chosen by `getHideTarget()` in `content.js`
+- **Add or change a keyword list**: Add the storage key in `content.js`, `popup.js`, and `background.js`, then wire a popup section and a content-script scan branch
 - **Change LLM prompt**: Edit `SYSTEM_PROMPT` in `background.js`
 - **Change LLM endpoint/model**: Update `LLM_URL` / `LLM_MODELS_URL` / `LLM_MODEL` in `background.js`
 - **Add permission**: Edit `permissions` / `host_permissions` in `manifest.json`

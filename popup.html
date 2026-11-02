@@ -12,7 +12,7 @@
     }
 
     body {
-      width: 320px;
+      width: 340px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background: #111318;
       color: #e1e3e6;
@@ -24,7 +24,13 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
     .title {
@@ -61,10 +67,58 @@
       box-shadow: 0 0 6px rgba(255, 70, 70, 0.4);
     }
 
+    /* --- Toggle Switch --- */
+    .toggle {
+      position: relative;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #2a2d35;
+      border-radius: 20px;
+      transition: background 0.3s;
+    }
+
+    .toggle .slider::before {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      left: 2px;
+      bottom: 2px;
+      background: #6a6e79;
+      border-radius: 50%;
+      transition: transform 0.3s, background 0.3s;
+    }
+
+    .toggle input:checked + .slider {
+      background: #00ff41;
+    }
+
+    .toggle input:checked + .slider::before {
+      transform: translateX(16px);
+      background: #111318;
+    }
+
     .input-row {
       display: flex;
       gap: 8px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .input-row input {
@@ -109,19 +163,59 @@
       cursor: not-allowed;
     }
 
+    .section-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .section-header .toggle {
+      margin-top: 1px;
+    }
+
     .section-label {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: #6a6e79;
-      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .section-label.positive {
+      color: #00ff41;
+    }
+
+    .section-label.negative {
+      color: #ff4646;
+    }
+
+    .section-hint {
+      font-size: 11px;
+      color: #6a6e79;
+      margin-top: 3px;
+      line-height: 1.35;
+    }
+
+    .separator {
+      border: none;
+      border-top: 1px solid #2a2d35;
+      margin: 18px 0;
+    }
+
+    .feature-disabled {
+      opacity: 0.5;
+    }
+
+    .keyword-section {
+      min-width: 0;
     }
 
     .keyword-list {
       list-style: none;
-      max-height: 200px;
+      max-height: 160px;
       overflow-y: auto;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .keyword-list::-webkit-scrollbar {
@@ -174,7 +268,7 @@
       text-align: center;
       color: #5a5e67;
       font-size: 12px;
-      padding: 20px 0;
+      padding: 16px 0;
     }
 
     .toast {
@@ -200,22 +294,62 @@
 </head>
 <body>
   <div class="header">
-    <div class="title"><span>✨</span> X Buddy</div>
+    <div class="header-left">
+      <label class="toggle" title="Enable or disable X Buddy">
+        <input type="checkbox" id="master-toggle" checked aria-label="Enable X Buddy" />
+        <span class="slider"></span>
+      </label>
+      <div class="title"><span>✨</span> X Buddy</div>
+    </div>
     <div class="llm-status" id="llm-status">
       <span class="dot" id="llm-dot"></span>
       <span id="llm-label">Checking…</span>
     </div>
   </div>
 
-  <div class="input-row">
-    <input type="text" id="keyword-input" placeholder="Add a keyword…" />
-    <button id="add-btn">Add</button>
+  <div id="controls">
+    <section class="keyword-section" id="positive-section">
+      <div class="section-header">
+        <label class="toggle" title="Enable positive highlighting">
+          <input type="checkbox" id="positive-toggle" checked aria-label="Enable positive highlighting" />
+          <span class="slider"></span>
+        </label>
+        <div class="section-heading">
+          <div class="section-label positive">Positive Keywords</div>
+          <div class="section-hint">Posts matching these keywords glow.</div>
+        </div>
+      </div>
+      <div class="input-row">
+        <input type="text" id="keyword-input" placeholder="Add a keyword…" />
+        <button id="add-btn">Add</button>
+      </div>
+      <ul class="keyword-list" id="keyword-list" role="list" aria-label="Positive keywords"></ul>
+      <div class="empty-state" id="empty-state">No positive keywords yet.</div>
+    </section>
+
+    <hr class="separator" />
+
+    <section class="keyword-section" id="negative-section">
+      <div class="section-header">
+        <label class="toggle" title="Enable negative filtering">
+          <input type="checkbox" id="negative-toggle" checked aria-label="Enable negative filtering" />
+          <span class="slider"></span>
+        </label>
+        <div class="section-heading">
+          <div class="section-label negative">Negative Keywords</div>
+          <div class="section-hint">Posts matching these keywords are hidden.</div>
+        </div>
+      </div>
+      <div class="input-row">
+        <input type="text" id="negative-keyword-input" placeholder="Add a negative keyword…" />
+        <button id="negative-add-btn">Add</button>
+      </div>
+      <ul class="keyword-list" id="negative-keyword-list" role="list" aria-label="Negative keywords"></ul>
+      <div class="empty-state" id="negative-empty-state">No negative keywords yet.</div>
+    </section>
   </div>
 
-  <div class="section-label">Keywords</div>
-  <ul class="keyword-list" id="keyword-list" role="list" aria-label="Highlighted keywords"></ul>
-  <div class="empty-state" id="empty-state">No keywords yet — add one above.</div>
-  <div class="toast" id="toast" role="alert" aria-live="polite"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="popup.js"></script>
 </body>

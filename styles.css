@@ -18,6 +18,11 @@
   }
 }
 
+/* --- Negative Keyword Filter --- */
+.xb-hidden-post {
+  display: none !important;
+}
+
 /* --- Magic Reply Button --- */
 .magic-reply-btn {
   all: unset;
