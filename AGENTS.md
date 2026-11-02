@@ -45,6 +45,8 @@ There is no automated test suite. Before committing a behavior change, check:
 - Removing a negative keyword, or turning negative filtering off, restores the posts.
 - The master toggle pauses and resumes highlighting, filtering, and Magic Reply.
 - The master, positive, and negative toggles keep their state after reopening the popup.
+- Search filters either list, pagination appears past five items, and Clear All empties the list after confirmation.
+- Duplicate and over-100-character keywords are rejected with button feedback.
 - Magic Reply appears in a reply dialog and on a post detail page, but not in the home "Post" box.
 - Magic Reply fills the composer, the send button enables, and an existing draft is replaced rather than appended.
 - The popup shows the real LLM status.
@@ -94,6 +96,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 - **LLM**: OpenAI-compatible endpoint at `http://localhost:8080` (model `gemma-4-E4B-it-QAT-Q4_0.gguf`), called from `background.js`. Content-script requests to loopback are blocked by Chrome's Local Network Access policy; the service worker has the `localhost` host permission and is allowed. Response parsing handles `message.content`, `delta.content`, `reasoning_content`, and fallback fields. `chat_template_kwargs.enable_thinking = false` disables Gemma's reasoning tokens (~10x faster replies).
 - **Keyword changes**: `resetPostProcessing()` clears `data-xb-processed`, `.xb-glow-post`, and `.xb-hidden-post` before a rescan, so newly added keywords apply to already-rendered posts and removed keywords stop glowing or hiding. Changes are debounced through `scheduleReprocess()`.
 - **Master toggle**: `disableExtension()` stops the observer and safety checks, clears every injected class/marker, and removes Magic Reply buttons. `enableExtension()` reloads settings and rescans. All scan functions are guarded by `enabled`.
+- **Popup lists**: five items per page, case-insensitive search, Clear All behind `confirm()`, and a 100-character limit. Duplicate or over-long adds flash feedback on the Add button; successful adds, clears, and toggle changes use the popup toast (`showToast(msg, 'error')` for failures).
 - **Security**: CSP in manifest restricts to `script-src 'self'`. Only `storage` permission is declared, plus host permissions for x.com/twitter.com and `localhost:8080`.
 - **Error boundary**: Global `error` and `unhandledrejection` listeners catch + log exceptions.
 

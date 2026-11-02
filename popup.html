@@ -211,6 +211,90 @@
       min-width: 0;
     }
 
+    .search-wrapper {
+      position: relative;
+      margin-bottom: 8px;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 6px 28px 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #2a2d35;
+      background: #1a1d23;
+      color: #e1e3e6;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: #00ff41;
+    }
+
+    .search-input::placeholder {
+      color: #5a5e67;
+    }
+
+    .search-clear {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #ff4646;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+      display: none;
+      z-index: 1;
+    }
+
+    .search-clear:hover {
+      color: #ff6b6b;
+    }
+
+    .search-clear.visible {
+      display: block;
+    }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 2px 0 6px;
+    }
+
+    .pagination button {
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: 1px solid #2a2d35;
+      background: #1a1d23;
+      color: #e1e3e6;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .pagination button:hover:not(:disabled) {
+      background: #2a2d35;
+    }
+
+    .pagination button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .pagination span {
+      font-size: 12px;
+      color: #8a8f9a;
+      min-width: 80px;
+      text-align: center;
+    }
+
     .keyword-list {
       list-style: none;
       max-height: 160px;
@@ -268,7 +352,35 @@
       text-align: center;
       color: #5a5e67;
       font-size: 12px;
-      padding: 16px 0;
+      padding: 14px 0;
+    }
+
+    .btn-outline {
+      width: 100%;
+      margin-top: 2px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid #2a2d35;
+      background: transparent;
+      color: #8a8f9a;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .btn-outline:hover {
+      background: #1a1d23;
+      color: #e1e3e6;
+    }
+
+    .btn-outline-danger {
+      border-color: #5a1a1a;
+      color: #ff6b6b;
+    }
+
+    .btn-outline-danger:hover {
+      background: #2a0a0a;
+      color: #ff4444;
     }
 
     .toast {
@@ -276,8 +388,9 @@
       bottom: 12px;
       left: 50%;
       transform: translateX(-50%);
-      background: #ff4646;
-      color: #fff;
+      background: #1a1d23;
+      color: #e1e3e6;
+      border: 1px solid #2a2d35;
       font-size: 12px;
       padding: 6px 14px;
       border-radius: 6px;
@@ -286,6 +399,14 @@
       pointer-events: none;
       z-index: 100;
       white-space: nowrap;
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .toast.error {
+      background: #ff4646;
+      color: #fff;
+      border-color: #ff4646;
     }
     .toast.visible {
       opacity: 1;
@@ -323,8 +444,18 @@
         <input type="text" id="keyword-input" placeholder="Add a keyword…" />
         <button id="add-btn">Add</button>
       </div>
+      <div class="search-wrapper">
+        <input type="text" class="search-input" id="positive-search" placeholder="Search keywords…" />
+        <button class="search-clear" id="positive-search-clear" title="Clear search" aria-label="Clear positive keyword search">&times;</button>
+      </div>
       <ul class="keyword-list" id="keyword-list" role="list" aria-label="Positive keywords"></ul>
+      <div class="pagination" id="positive-pagination" style="display:none">
+        <button id="positive-prev-btn" title="Previous page">&larr; Prev</button>
+        <span id="positive-page-info">Page 1 of 1</span>
+        <button id="positive-next-btn" title="Next page">Next &rarr;</button>
+      </div>
       <div class="empty-state" id="empty-state">No positive keywords yet.</div>
+      <button class="btn-outline btn-outline-danger" id="clear-positive-btn">Clear All</button>
     </section>
 
     <hr class="separator" />
@@ -344,8 +475,18 @@
         <input type="text" id="negative-keyword-input" placeholder="Add a negative keyword…" />
         <button id="negative-add-btn">Add</button>
       </div>
+      <div class="search-wrapper">
+        <input type="text" class="search-input" id="negative-search" placeholder="Search keywords…" />
+        <button class="search-clear" id="negative-search-clear" title="Clear search" aria-label="Clear negative keyword search">&times;</button>
+      </div>
       <ul class="keyword-list" id="negative-keyword-list" role="list" aria-label="Negative keywords"></ul>
+      <div class="pagination" id="negative-pagination" style="display:none">
+        <button id="negative-prev-btn" title="Previous page">&larr; Prev</button>
+        <span id="negative-page-info">Page 1 of 1</span>
+        <button id="negative-next-btn" title="Next page">Next &rarr;</button>
+      </div>
       <div class="empty-state" id="negative-empty-state">No negative keywords yet.</div>
+      <button class="btn-outline btn-outline-danger" id="clear-negative-btn">Clear All</button>
     </section>
   </div>
 

@@ -13,6 +13,7 @@
 - **Keyword glow.** Add words you care about and matching posts in your timeline get a green glow. Useful when you want to spot a topic without reading every post.
 - **Negative keywords.** Add words you never want to see and matching posts are hidden from the timeline. Turn the whole list off whenever you want it back.
 - **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting and negative filtering.
+- **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
 - **Magic Reply.** Open a reply and click the Magic Reply button. Your local model writes a draft straight into the composer. You can edit it before posting.
 - **Stays local.** No accounts, no API keys, no tracking. Your keywords and posts go to the model on your computer and nowhere else.
 
@@ -66,6 +67,8 @@ Posts already on the page update too, so you do not need to reload.
 
 The helper text under the section says it plainly: **Posts matching these keywords are hidden.** Remove the word, or flip the negative toggle off, and the posts come back. Positive and negative keywords both match whole words only, so `ai` will not match `rain`.
 
+Each list has its own search box, five-item pages, and a **Clear All** button. Keywords are capped at 100 characters and duplicates are rejected regardless of case.
+
 ### Pause everything
 
 The toggle next to the X Buddy title is the master switch. Turning it off removes highlighting, hidden posts, and Magic Reply buttons without deleting any settings. Turn it back on to restore them.
@@ -98,6 +101,7 @@ X Buddy is an early build. What is done and what is next:
 - [x] Keyword highlighting
 - [x] Negative keyword filtering
 - [x] Master, positive, and negative toggles
+- [x] Keyword search, pagination, and clear-all controls
 - [x] Magic Reply with a local model
 - [ ] Support X's new web layout
 - [ ] Settings page for the server URL and model
