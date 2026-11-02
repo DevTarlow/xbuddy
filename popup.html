@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>X Buddy</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #111318;
+      color: #e1e3e6;
+      padding: 16px;
+      font-size: 14px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .title span {
+      margin-right: 4px;
+    }
+
+    .llm-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #8a8f9a;
+    }
+
+    .llm-status .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4a4d55;
+      transition: background 0.3s ease;
+    }
+
+    .llm-status .dot.connected {
+      background: #00ff41;
+      box-shadow: 0 0 6px rgba(0, 255, 65, 0.5);
+    }
+
+    .llm-status .dot.offline {
+      background: #ff4646;
+      box-shadow: 0 0 6px rgba(255, 70, 70, 0.4);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .input-row input {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #2a2d35;
+      background: #1a1d23;
+      color: #e1e3e6;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-row input:focus {
+      border-color: #00ff41;
+    }
+
+    .input-row input::placeholder {
+      color: #5a5e67;
+    }
+
+    .input-row button {
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: none;
+      background: #00ff41;
+      color: #111318;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+      white-space: nowrap;
+    }
+
+    .input-row button:hover {
+      background: #00cc34;
+    }
+
+    .input-row button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6a6e79;
+      margin-bottom: 8px;
+    }
+
+    .keyword-list {
+      list-style: none;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-bottom: 8px;
+    }
+
+    .keyword-list::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .keyword-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .keyword-list::-webkit-scrollbar-thumb {
+      background: #2a2d35;
+      border-radius: 4px;
+    }
+
+    .keyword-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      margin-bottom: 4px;
+      background: #1a1d23;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .keyword-item .keyword-text {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .keyword-item .delete-btn {
+      background: none;
+      border: none;
+      color: #6a6e79;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0 2px;
+      line-height: 1;
+      transition: color 0.2s;
+    }
+
+    .keyword-item .delete-btn:hover {
+      color: #ff4646;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #5a5e67;
+      font-size: 12px;
+      padding: 20px 0;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #ff4646;
+      color: #fff;
+      font-size: 12px;
+      padding: 6px 14px;
+      border-radius: 6px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      z-index: 100;
+      white-space: nowrap;
+    }
+    .toast.visible {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title"><span>✨</span> X Buddy</div>
+    <div class="llm-status" id="llm-status">
+      <span class="dot" id="llm-dot"></span>
+      <span id="llm-label">Checking…</span>
+    </div>
+  </div>
+
+  <div class="input-row">
+    <input type="text" id="keyword-input" placeholder="Add a keyword…" />
+    <button id="add-btn">Add</button>
+  </div>
+
+  <div class="section-label">Keywords</div>
+  <ul class="keyword-list" id="keyword-list" role="list" aria-label="Highlighted keywords"></ul>
+  <div class="empty-state" id="empty-state">No keywords yet — add one above.</div>
+  <div class="toast" id="toast" role="alert" aria-live="polite"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
