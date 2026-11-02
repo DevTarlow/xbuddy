@@ -15,6 +15,7 @@
 - **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting and negative filtering.
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
+- **Backup.** Export keywords, toggles, and glow color to a JSON file, and import them on another browser.
 - **Magic Reply.** Open a reply and click the Magic Reply button. Your local model writes a draft straight into the composer. You can edit it before posting.
 - **Stays local.** No accounts, no API keys, no tracking. Your keywords and posts go to the model on your computer and nowhere else.
 
@@ -82,6 +83,14 @@ The toggle next to the X Buddy title is the master switch. Turning it off remove
 
 Matching posts use the new color immediately, and the choice survives reloads.
 
+### Back up your settings
+
+1. Click the X Buddy icon and expand **Settings**
+2. Click **Export All** to download `xbuddy-config.json`
+3. On another browser, click **Import** and pick that file
+
+A full config restore replaces the current keyword lists, toggles, and glow color. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
+
 ### Draft a reply
 
 1. Open a post's reply dialog, or open the post detail page
@@ -112,6 +121,7 @@ X Buddy is an early build. What is done and what is next:
 - [x] Master, positive, and negative toggles
 - [x] Keyword search, pagination, and clear-all controls
 - [x] Configurable glow color
+- [x] Full-config export/import
 - [x] Magic Reply with a local model
 - [ ] Support X's new web layout
 - [ ] Settings page for the server URL and model

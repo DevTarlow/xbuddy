@@ -437,6 +437,18 @@
       cursor: pointer;
     }
 
+    .action-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .action-row .btn-outline {
+      flex: 1;
+      width: auto;
+      margin-top: 0;
+    }
+
     .toast {
       position: fixed;
       bottom: 12px;
@@ -555,6 +567,14 @@
         <div class="input-row" style="margin-bottom: 4px;">
           <input type="color" id="glow-color-input" value="#00ff41" aria-label="Glow color" />
           <button id="save-glow-color-btn">Save</button>
+        </div>
+
+        <div class="settings-label" style="margin-top: 14px;">Export / Import:</div>
+        <div class="section-hint" style="margin-bottom: 8px;">Back up keywords, toggles, and glow color as JSON.</div>
+        <div class="action-row">
+          <button class="btn-outline" id="export-btn">Export All</button>
+          <button class="btn-outline" id="import-btn">Import</button>
+          <input type="file" accept=".json,application/json" id="import-input" hidden />
         </div>
       </div>
     </div>

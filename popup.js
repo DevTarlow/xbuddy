@@ -47,6 +47,9 @@ const settingsArrow = document.getElementById('settings-arrow');
 const settingsBody = document.getElementById('settings-body');
 const glowColorInput = document.getElementById('glow-color-input');
 const saveGlowColorBtn = document.getElementById('save-glow-color-btn');
+const exportBtn = document.getElementById('export-btn');
+const importBtn = document.getElementById('import-btn');
+const importInput = document.getElementById('import-input');
 const llmDot = document.getElementById('llm-dot');
 const llmLabel = document.getElementById('llm-label');
 
@@ -323,6 +326,189 @@ async function clearList(list, storageKey, listLabel, renderFn, setPage) {
   showToast(`All ${listLabel} keywords cleared`);
 }
 
+// --- Export / Import ---
+function prepareImportedKeywords(arr) {
+  return normalizeKeywords(arr).filter(k => k.length <= MAX_KEYWORD_LENGTH);
+}
+
+function buildConfig() {
+  return {
+    app: 'xbuddy',
+    version: 1,
+    positive: keywords,
+    negative: negativeKeywords,
+    positiveEnabled,
+    negativeEnabled,
+    enabled,
+    glowColor,
+  };
+}
+
+function exportConfig() {
+  const blob = new Blob([JSON.stringify(buildConfig(), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'xbuddy-config.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Config exported');
+}
+
+function refreshFromState() {
+  masterToggle.checked = enabled;
+  positiveToggle.checked = positiveEnabled;
+  negativeToggle.checked = negativeEnabled;
+  glowColorInput.value = glowColor;
+
+  positiveSearch.value = '';
+  positiveSearchQuery = '';
+  positiveSearchClear.classList.remove('visible');
+  negativeSearch.value = '';
+  negativeSearchQuery = '';
+  negativeSearchClear.classList.remove('visible');
+  positivePage = 1;
+  negativePage = 1;
+
+  applyMasterState();
+  applyPositiveState();
+  applyNegativeState();
+  renderKeywords();
+  renderNegativeKeywords();
+}
+
+async function importFullConfig(data) {
+  const toSet = {};
+
+  if (Array.isArray(data.positive)) {
+    toSet[STORAGE_KEY] = prepareImportedKeywords(data.positive);
+  }
+  if (Array.isArray(data.negative)) {
+    toSet[NEGATIVE_STORAGE_KEY] = prepareImportedKeywords(data.negative);
+  }
+  if (typeof data.positiveEnabled === 'boolean') toSet[POSITIVE_ENABLED_KEY] = data.positiveEnabled;
+  if (typeof data.negativeEnabled === 'boolean') toSet[NEGATIVE_ENABLED_KEY] = data.negativeEnabled;
+  if (typeof data.enabled === 'boolean') toSet[ENABLED_KEY] = data.enabled;
+  if (isValidHexColor(data.glowColor)) toSet[GLOW_KEY] = data.glowColor;
+
+  if (Object.keys(toSet).length === 0) {
+    flashSaveFeedback(importBtn, 'No settings in file');
+    showToast('No settings in file', 'error');
+    return;
+  }
+
+  try {
+    await chrome.storage.local.set(toSet);
+  } catch (e) {
+    console.error('[X Buddy] Failed to import config:', e);
+    flashSaveFeedback(importBtn, 'Import failed');
+    showToast('Failed to import config', 'error');
+    return;
+  }
+
+  if (toSet[STORAGE_KEY]) keywords = [...toSet[STORAGE_KEY]];
+  if (toSet[NEGATIVE_STORAGE_KEY]) negativeKeywords = [...toSet[NEGATIVE_STORAGE_KEY]];
+  if (toSet[ENABLED_KEY] !== undefined) enabled = toSet[ENABLED_KEY];
+  if (toSet[POSITIVE_ENABLED_KEY] !== undefined) positiveEnabled = toSet[POSITIVE_ENABLED_KEY];
+  if (toSet[NEGATIVE_ENABLED_KEY] !== undefined) negativeEnabled = toSet[NEGATIVE_ENABLED_KEY];
+  if (toSet[GLOW_KEY]) glowColor = toSet[GLOW_KEY];
+
+  refreshFromState();
+  flashSaveFeedback(importBtn, 'Imported ✓');
+  showToast('Config imported');
+}
+
+async function importLegacy(data) {
+  const incomingPositive = Array.isArray(data)
+    ? data
+    : (Array.isArray(data.positive) ? data.positive : []);
+  const incomingNegative = !Array.isArray(data) && Array.isArray(data.negative)
+    ? data.negative
+    : [];
+
+  const previousPositive = keywords.slice();
+  const previousNegative = negativeKeywords.slice();
+  let added = 0;
+
+  for (const raw of incomingPositive) {
+    if (typeof raw !== 'string') continue;
+    const keyword = raw.trim();
+    if (!keyword || keyword.length > MAX_KEYWORD_LENGTH) continue;
+    if (keywords.some(k => k.toLowerCase() === keyword.toLowerCase())) continue;
+    keywords.push(keyword);
+    added++;
+  }
+
+  for (const raw of incomingNegative) {
+    if (typeof raw !== 'string') continue;
+    const keyword = raw.trim();
+    if (!keyword || keyword.length > MAX_KEYWORD_LENGTH) continue;
+    if (negativeKeywords.some(k => k.toLowerCase() === keyword.toLowerCase())) continue;
+    negativeKeywords.push(keyword);
+    added++;
+  }
+
+  if (added === 0) {
+    flashSaveFeedback(importBtn, 'Nothing new');
+    showToast('No new keywords in file');
+    return;
+  }
+
+  try {
+    await chrome.storage.local.set({
+      [STORAGE_KEY]: keywords,
+      [NEGATIVE_STORAGE_KEY]: negativeKeywords,
+    });
+  } catch (e) {
+    keywords = previousPositive;
+    negativeKeywords = previousNegative;
+    console.error('[X Buddy] Failed to import keywords:', e);
+    flashSaveFeedback(importBtn, 'Import failed');
+    showToast('Failed to import keywords', 'error');
+    return;
+  }
+
+  refreshFromState();
+  flashSaveFeedback(importBtn, 'Imported ✓');
+  showToast(`Imported ${added} keyword${added === 1 ? '' : 's'}`);
+}
+
+async function handleImportFile() {
+  const file = importInput.files[0];
+  if (!file) return;
+
+  try {
+    const data = JSON.parse(await file.text());
+
+    if (data && !Array.isArray(data) && data.app && data.app !== 'xbuddy') {
+      flashSaveFeedback(importBtn, 'Wrong app');
+      showToast('Not an X Buddy config', 'error');
+      return;
+    }
+
+    if (data && !Array.isArray(data) && typeof data.version === 'number') {
+      await importFullConfig(data);
+      return;
+    }
+
+    if (Array.isArray(data) || (data && (Array.isArray(data.positive) || Array.isArray(data.negative)))) {
+      await importLegacy(data);
+      return;
+    }
+
+    flashSaveFeedback(importBtn, 'No keywords in file');
+    showToast('No keywords in file', 'error');
+  } catch (e) {
+    console.error('[X Buddy] Import failed:', e);
+    flashSaveFeedback(importBtn, 'Invalid file');
+    showToast('Invalid config file', 'error');
+  } finally {
+    importInput.value = '';
+  }
+}
+
 // --- Toggle UI ---
 function applyMasterState() {
   controls.classList.toggle('feature-disabled', !enabled);
@@ -520,6 +706,10 @@ saveGlowColorBtn.addEventListener('click', async () => {
     flashSaveFeedback(saveGlowColorBtn, 'Saved ✓');
   }
 });
+
+exportBtn.addEventListener('click', exportConfig);
+importBtn.addEventListener('click', () => importInput.click());
+importInput.addEventListener('change', handleImportFile);
 
 // --- Init ---
 (async function init() {

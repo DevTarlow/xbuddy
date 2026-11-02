@@ -48,6 +48,8 @@ There is no automated test suite. Before committing a behavior change, check:
 - Search filters either list, pagination appears past five items, and Clear All empties the list after confirmation.
 - Duplicate and over-100-character keywords are rejected with button feedback.
 - Changing the glow color updates existing and new glowing posts, and the choice survives a reload.
+- Export All downloads a JSON config; importing it restores the lists, toggles, and glow color.
+- Importing a legacy file with only `positive`/`negative` arrays merges keywords instead of replacing the lists.
 - Magic Reply appears in a reply dialog and on a post detail page, but not in the home "Post" box.
 - Magic Reply fills the composer, the send button enables, and an existing draft is replaced rather than appended.
 - The popup shows the real LLM status.
@@ -101,6 +103,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 - **Master toggle**: `disableExtension()` stops the observer and safety checks, clears every injected class/marker, and removes Magic Reply buttons. `enableExtension()` reloads settings and rescans. All scan functions are guarded by `enabled`.
 - **Popup lists**: five items per page, case-insensitive search, Clear All behind `confirm()`, and a 100-character limit. Duplicate or over-long adds flash feedback on the Add button; successful adds, clears, and toggle changes use the popup toast (`showToast(msg, 'error')` for failures).
 - **Glow color**: `applyGlowColor()` converts the stored `#rrggbb` value into `--xb-glow-rgb` on `document.documentElement`. The CSS uses `rgba(var(--xb-glow-rgb, 0, 255, 65), …)`, so existing glowing posts recolor immediately without a rescan. Invalid values fall back to `#00ff41`.
+- **Export/import**: version 1 configs are marked `app: 'xbuddy'` and carry both lists, all toggles, and the glow color. A versioned import replaces the present keys in one `chrome.storage.local.set`; legacy files containing only `positive`/`negative` arrays merge additively. Other app markers, invalid JSON, and over-100-character keywords are rejected or skipped.
 - **Security**: CSP in manifest restricts to `script-src 'self'`. Only `storage` permission is declared, plus host permissions for x.com/twitter.com and `localhost:8080`.
 - **Error boundary**: Global `error` and `unhandledrejection` listeners catch + log exceptions.
 
