@@ -100,7 +100,7 @@ icons/                 — Extension icons (16, 48, 128 PNG)
 
 ### Debugging
 
-- `localStorage.setItem('xbDebug', 'true')` at runtime or set `DEBUG = true` in `content.js`
+- Set `DEBUG = true` at the top of `content.js` for verbose console logging, then reload the extension. There is no runtime toggle wired up.
 - X's React re-renders aggressively. `scanAllDialogs()` / `scanInlineComposers()` re-inject a removed button when the marker attribute survived; if the button still disappears, check the composer selectors.
 - CSS selectors in `POST_SELECTORS` / `DIALOG_SELECTORS` break when X changes their DOM — most common maint issue. X's new (2026) logged-in UI removes `data-testid` entirely; the classic selectors do not match it.
 
