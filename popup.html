@@ -383,6 +383,60 @@
       color: #ff4444;
     }
 
+    .collapsible {
+      margin-top: 2px;
+    }
+
+    .collapsible-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 8px 0;
+      background: none;
+      border: none;
+      color: #e1e3e6;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .collapsible-header:hover {
+      color: #00ff41;
+    }
+
+    .collapsible-arrow {
+      font-size: 10px;
+      transition: transform 0.2s;
+    }
+
+    .collapsible-body {
+      overflow: hidden;
+      max-height: 600px;
+      transition: max-height 0.3s ease;
+    }
+
+    .collapsible-body.collapsed {
+      max-height: 0;
+    }
+
+    .settings-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6a6e79;
+      margin-bottom: 8px;
+    }
+
+    .input-row input[type="color"] {
+      flex: 0 0 48px;
+      width: 48px;
+      height: 34px;
+      padding: 2px;
+      cursor: pointer;
+    }
+
     .toast {
       position: fixed;
       bottom: 12px;
@@ -488,6 +542,22 @@
       <div class="empty-state" id="negative-empty-state">No negative keywords yet.</div>
       <button class="btn-outline btn-outline-danger" id="clear-negative-btn">Clear All</button>
     </section>
+
+    <hr class="separator" />
+
+    <div class="collapsible">
+      <button class="collapsible-header" id="settings-toggle" aria-expanded="false">
+        <span>Settings</span>
+        <span class="collapsible-arrow" id="settings-arrow">▶</span>
+      </button>
+      <div class="collapsible-body collapsed" id="settings-body">
+        <div class="settings-label" style="margin-top: 10px;">Glow Color:</div>
+        <div class="input-row" style="margin-bottom: 4px;">
+          <input type="color" id="glow-color-input" value="#00ff41" aria-label="Glow color" />
+          <button id="save-glow-color-btn">Save</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

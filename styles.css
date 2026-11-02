@@ -3,7 +3,7 @@
 /* --- Glowing Highlight --- */
 .xb-glow-post {
   isolation: isolate;
-  box-shadow: 0 0 4px rgba(0, 255, 65, 0.3), 0 0 12px rgba(0, 255, 65, 0.2);
+  box-shadow: 0 0 4px rgba(var(--xb-glow-rgb, 0, 255, 65), 0.3), 0 0 12px rgba(var(--xb-glow-rgb, 0, 255, 65), 0.2);
   border-radius: 8px;
   transition: box-shadow 0.3s ease;
   animation: xb-glow-pulse 2s ease-in-out infinite;
@@ -11,10 +11,10 @@
 
 @keyframes xb-glow-pulse {
   0%, 100% {
-    box-shadow: 0 0 4px rgba(0, 255, 65, 0.3), 0 0 12px rgba(0, 255, 65, 0.2);
+    box-shadow: 0 0 4px rgba(var(--xb-glow-rgb, 0, 255, 65), 0.3), 0 0 12px rgba(var(--xb-glow-rgb, 0, 255, 65), 0.2);
   }
   50% {
-    box-shadow: 0 0 8px rgba(0, 255, 65, 0.5), 0 0 20px rgba(0, 255, 65, 0.3);
+    box-shadow: 0 0 8px rgba(var(--xb-glow-rgb, 0, 255, 65), 0.5), 0 0 20px rgba(var(--xb-glow-rgb, 0, 255, 65), 0.3);
   }
 }
 

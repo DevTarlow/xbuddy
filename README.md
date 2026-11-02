@@ -14,6 +14,7 @@
 - **Negative keywords.** Add words you never want to see and matching posts are hidden from the timeline. Turn the whole list off whenever you want it back.
 - **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting and negative filtering.
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
+- **Glow color.** Pick any highlight color in Settings instead of the default green.
 - **Magic Reply.** Open a reply and click the Magic Reply button. Your local model writes a draft straight into the composer. You can edit it before posting.
 - **Stays local.** No accounts, no API keys, no tracking. Your keywords and posts go to the model on your computer and nowhere else.
 
@@ -73,6 +74,14 @@ Each list has its own search box, five-item pages, and a **Clear All** button. K
 
 The toggle next to the X Buddy title is the master switch. Turning it off removes highlighting, hidden posts, and Magic Reply buttons without deleting any settings. Turn it back on to restore them.
 
+### Pick a glow color
+
+1. Click the X Buddy icon
+2. Expand **Settings**
+3. Choose a color, then click **Save**
+
+Matching posts use the new color immediately, and the choice survives reloads.
+
 ### Draft a reply
 
 1. Open a post's reply dialog, or open the post detail page
@@ -102,6 +111,7 @@ X Buddy is an early build. What is done and what is next:
 - [x] Negative keyword filtering
 - [x] Master, positive, and negative toggles
 - [x] Keyword search, pagination, and clear-all controls
+- [x] Configurable glow color
 - [x] Magic Reply with a local model
 - [ ] Support X's new web layout
 - [ ] Settings page for the server URL and model

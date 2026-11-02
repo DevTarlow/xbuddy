@@ -7,6 +7,8 @@ const NEGATIVE_STORAGE_KEY = 'xbBuddyNegativeKeywords';
 const ENABLED_KEY = 'xbBuddyEnabled';
 const POSITIVE_ENABLED_KEY = 'xbBuddyPositiveEnabled';
 const NEGATIVE_ENABLED_KEY = 'xbBuddyNegativeEnabled';
+const GLOW_KEY = 'xbBuddyGlowColor';
+const DEFAULT_GLOW_COLOR = '#00ff41';
 const PROCESSED_ATTR = 'data-xb-processed';
 const MAGIC_REPLY_ATTR = 'data-magic-reply';
 
@@ -32,6 +34,7 @@ let negativeKeywordList = [];          // negative keywords, original casing
 let positiveEnabled = true;
 let negativeEnabled = true;
 let enabled = true;
+let glowColor = DEFAULT_GLOW_COLOR;
 let processedPosts = new WeakSet();    // prevent re-processing
 let processedDialogs = new WeakSet();  // prevent re-injecting buttons
 let observer = null;
@@ -111,10 +114,25 @@ function normalizeKeywordList(arr) {
   return out;
 }
 
+function normalizeGlowColor(value) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)
+    ? value
+    : DEFAULT_GLOW_COLOR;
+}
+
+function applyGlowColor(hex) {
+  const color = normalizeGlowColor(hex);
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+  document.documentElement.style.setProperty('--xb-glow-rgb', `${r}, ${g}, ${b}`);
+}
+
 async function loadSettings() {
   enabled = true;
   positiveEnabled = true;
   negativeEnabled = true;
+  glowColor = DEFAULT_GLOW_COLOR;
   try {
     const result = await chrome.storage.local.get([
       STORAGE_KEY,
@@ -122,17 +140,20 @@ async function loadSettings() {
       ENABLED_KEY,
       POSITIVE_ENABLED_KEY,
       NEGATIVE_ENABLED_KEY,
+      GLOW_KEY,
     ]);
     keywordList = normalizeKeywordList(result[STORAGE_KEY] || []);
     negativeKeywordList = normalizeKeywordList(result[NEGATIVE_STORAGE_KEY] || []);
     enabled = result[ENABLED_KEY] !== false;
     positiveEnabled = result[POSITIVE_ENABLED_KEY] !== false;
     negativeEnabled = result[NEGATIVE_ENABLED_KEY] !== false;
+    glowColor = normalizeGlowColor(result[GLOW_KEY]);
   } catch (err) {
     console.warn('[X Buddy] Could not load settings:', err);
     keywordList = [];
     negativeKeywordList = [];
   }
+  applyGlowColor(glowColor);
 }
 
 function listenForStorageChanges() {
@@ -151,6 +172,12 @@ function listenForStorageChanges() {
         }
         return;
       }
+    }
+
+    if (changes[GLOW_KEY] !== undefined) {
+      glowColor = normalizeGlowColor(changes[GLOW_KEY].newValue);
+      applyGlowColor(glowColor);
+      debug('Glow color updated:', glowColor);
     }
 
     if (!enabled) return;

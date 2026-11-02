@@ -47,6 +47,7 @@ There is no automated test suite. Before committing a behavior change, check:
 - The master, positive, and negative toggles keep their state after reopening the popup.
 - Search filters either list, pagination appears past five items, and Clear All empties the list after confirmation.
 - Duplicate and over-100-character keywords are rejected with button feedback.
+- Changing the glow color updates existing and new glowing posts, and the choice survives a reload.
 - Magic Reply appears in a reply dialog and on a post detail page, but not in the home "Post" box.
 - Magic Reply fills the composer, the send button enables, and an existing draft is replaced rather than appended.
 - The popup shows the real LLM status.
@@ -75,6 +76,8 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 | `xbBuddyEnabled` | `boolean` | `true` | Master pause/resume |
 | `xbBuddyPositiveEnabled` | `boolean` | `true` | Positive highlighting on/off |
 | `xbBuddyNegativeEnabled` | `boolean` | `true` | Negative filtering on/off |
+| `xbBuddyGlowColor` | `string` | `#00ff41` | Highlight color (`#rrggbb`) |
+| `xbBuddySettingsOpen` | `boolean` | `false` | Popup Settings section open state |
 
 ## Code Conventions
 
@@ -97,6 +100,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 - **Keyword changes**: `resetPostProcessing()` clears `data-xb-processed`, `.xb-glow-post`, and `.xb-hidden-post` before a rescan, so newly added keywords apply to already-rendered posts and removed keywords stop glowing or hiding. Changes are debounced through `scheduleReprocess()`.
 - **Master toggle**: `disableExtension()` stops the observer and safety checks, clears every injected class/marker, and removes Magic Reply buttons. `enableExtension()` reloads settings and rescans. All scan functions are guarded by `enabled`.
 - **Popup lists**: five items per page, case-insensitive search, Clear All behind `confirm()`, and a 100-character limit. Duplicate or over-long adds flash feedback on the Add button; successful adds, clears, and toggle changes use the popup toast (`showToast(msg, 'error')` for failures).
+- **Glow color**: `applyGlowColor()` converts the stored `#rrggbb` value into `--xb-glow-rgb` on `document.documentElement`. The CSS uses `rgba(var(--xb-glow-rgb, 0, 255, 65), …)`, so existing glowing posts recolor immediately without a rescan. Invalid values fall back to `#00ff41`.
 - **Security**: CSP in manifest restricts to `script-src 'self'`. Only `storage` permission is declared, plus host permissions for x.com/twitter.com and `localhost:8080`.
 - **Error boundary**: Global `error` and `unhandledrejection` listeners catch + log exceptions.
 
@@ -129,7 +133,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 ## Common Tasks
 
 - **Add tweet selector**: Add to `POST_SELECTORS` array in `content.js`
-- **Change glow style**: Edit `.xb-glow-post` / `@keyframes xb-glow-pulse` in `styles.css`
+- **Change glow style**: Edit `.xb-glow-post` / `@keyframes xb-glow-pulse` in `styles.css`; the user-facing default is `DEFAULT_GLOW_COLOR` in `content.js` and the color input in `popup.html`
 - **Change hidden style**: Edit `.xb-hidden-post` in `styles.css`; the hide target is chosen by `getHideTarget()` in `content.js`
 - **Add or change a keyword list**: Add the storage key in `content.js`, `popup.js`, and `background.js`, then wire a popup section and a content-script scan branch
 - **Change LLM prompt**: Edit `SYSTEM_PROMPT` in `background.js`

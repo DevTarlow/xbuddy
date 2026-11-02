@@ -6,6 +6,9 @@ const NEGATIVE_STORAGE_KEY = 'xbBuddyNegativeKeywords';
 const ENABLED_KEY = 'xbBuddyEnabled';
 const POSITIVE_ENABLED_KEY = 'xbBuddyPositiveEnabled';
 const NEGATIVE_ENABLED_KEY = 'xbBuddyNegativeEnabled';
+const GLOW_KEY = 'xbBuddyGlowColor';
+const SETTINGS_OPEN_KEY = 'xbBuddySettingsOpen';
+const DEFAULT_GLOW_COLOR = '#00ff41';
 
 const PAGE_SIZE = 5;
 const MAX_KEYWORD_LENGTH = 100;
@@ -39,6 +42,11 @@ const negativePrevBtn = document.getElementById('negative-prev-btn');
 const negativeNextBtn = document.getElementById('negative-next-btn');
 const negativePageInfo = document.getElementById('negative-page-info');
 const clearNegativeBtn = document.getElementById('clear-negative-btn');
+const settingsToggle = document.getElementById('settings-toggle');
+const settingsArrow = document.getElementById('settings-arrow');
+const settingsBody = document.getElementById('settings-body');
+const glowColorInput = document.getElementById('glow-color-input');
+const saveGlowColorBtn = document.getElementById('save-glow-color-btn');
 const llmDot = document.getElementById('llm-dot');
 const llmLabel = document.getElementById('llm-label');
 
@@ -52,6 +60,8 @@ let positivePage = 1;
 let negativePage = 1;
 let positiveSearchQuery = '';
 let negativeSearchQuery = '';
+let glowColor = DEFAULT_GLOW_COLOR;
+let settingsOpen = false;
 let toastTimer = null;
 
 // --- Toast ---
@@ -97,6 +107,10 @@ function normalizeKeywords(arr) {
   return out;
 }
 
+function isValidHexColor(value) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
 // --- Storage helpers ---
 async function loadState() {
   try {
@@ -106,12 +120,16 @@ async function loadState() {
       ENABLED_KEY,
       POSITIVE_ENABLED_KEY,
       NEGATIVE_ENABLED_KEY,
+      GLOW_KEY,
+      SETTINGS_OPEN_KEY,
     ]);
     keywords = normalizeKeywords(result[STORAGE_KEY] || []);
     negativeKeywords = normalizeKeywords(result[NEGATIVE_STORAGE_KEY] || []);
     enabled = result[ENABLED_KEY] !== false;
     positiveEnabled = result[POSITIVE_ENABLED_KEY] !== false;
     negativeEnabled = result[NEGATIVE_ENABLED_KEY] !== false;
+    glowColor = isValidHexColor(result[GLOW_KEY]) ? result[GLOW_KEY] : DEFAULT_GLOW_COLOR;
+    settingsOpen = result[SETTINGS_OPEN_KEY] === true;
   } catch (e) {
     console.error('[X Buddy] Failed to load settings:', e);
     showToast('Failed to load settings', 'error');
@@ -320,6 +338,12 @@ function applyNegativeState() {
   negativeSection.classList.toggle('feature-disabled', !negativeEnabled);
 }
 
+function applySettingsState() {
+  settingsBody.classList.toggle('collapsed', !settingsOpen);
+  settingsArrow.textContent = settingsOpen ? '▼' : '▶';
+  settingsToggle.setAttribute('aria-expanded', String(settingsOpen));
+}
+
 // --- LLM connection check ---
 async function checkLlmStatus() {
   try {
@@ -478,15 +502,36 @@ clearNegativeBtn.addEventListener('click', async () => {
   );
 });
 
+// --- Settings ---
+settingsToggle.addEventListener('click', async () => {
+  settingsOpen = !settingsOpen;
+  applySettingsState();
+  await saveFlag(SETTINGS_OPEN_KEY, settingsOpen);
+});
+
+saveGlowColorBtn.addEventListener('click', async () => {
+  const value = glowColorInput.value;
+  if (!isValidHexColor(value)) {
+    flashSaveFeedback(saveGlowColorBtn, 'Invalid color');
+    return;
+  }
+  if (await saveFlag(GLOW_KEY, value)) {
+    glowColor = value;
+    flashSaveFeedback(saveGlowColorBtn, 'Saved ✓');
+  }
+});
+
 // --- Init ---
 (async function init() {
   await loadState();
   masterToggle.checked = enabled;
   positiveToggle.checked = positiveEnabled;
   negativeToggle.checked = negativeEnabled;
+  glowColorInput.value = glowColor;
   applyMasterState();
   applyPositiveState();
   applyNegativeState();
+  applySettingsState();
   renderKeywords();
   renderNegativeKeywords();
   checkLlmStatus();
