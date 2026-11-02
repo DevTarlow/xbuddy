@@ -4,6 +4,14 @@
 // via Local Network Access. Extension pages/service workers with the
 // localhost host permission are allowed to make the request.
 
+// Keep these storage keys in sync with content.js and popup.js.
+const KEYWORDS_KEY = 'xbBuddyKeywords';
+const NEGATIVE_KEYWORDS_KEY = 'xbBuddyNegativeKeywords';
+const NOTIFICATION_KEY = 'xbBuddyNotification';
+const MENU_POSITIVE = 'xb-add-positive';
+const MENU_NEGATIVE = 'xb-add-negative';
+const MAX_KEYWORD_LENGTH = 100;
+
 const LLM_URL = 'http://localhost:8080/v1/chat/completions';
 const LLM_MODELS_URL = 'http://localhost:8080/v1/models';
 const LLM_MODEL = 'gemma-4-E4B-it-QAT-Q4_0.gguf';
@@ -76,6 +84,101 @@ async function checkLlmStatus() {
   });
   return resp.ok;
 }
+
+// ===================================================================
+//  CONTEXT MENUS
+// ===================================================================
+
+function normalizeKeywordList(arr) {
+  if (!Array.isArray(arr)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const item of arr) {
+    if (typeof item !== 'string') continue;
+    const keyword = item.trim();
+    if (!keyword) continue;
+    const lower = keyword.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    out.push(keyword);
+  }
+  return out;
+}
+
+async function setNotification(payload) {
+  try {
+    await chrome.storage.local.set({ [NOTIFICATION_KEY]: payload });
+  } catch (err) {
+    console.warn('[X Buddy] Failed to set keyword notification:', err);
+  }
+}
+
+function setupContextMenus() {
+  chrome.contextMenus.removeAll(() => {
+    const documentUrlPatterns = ['https://x.com/*', 'https://twitter.com/*'];
+
+    chrome.contextMenus.create({
+      id: MENU_POSITIVE,
+      title: 'Add "%s" to Positive Keywords',
+      contexts: ['selection'],
+      documentUrlPatterns,
+    }, () => void chrome.runtime.lastError);
+
+    chrome.contextMenus.create({
+      id: MENU_NEGATIVE,
+      title: 'Add "%s" to Negative Keywords',
+      contexts: ['selection'],
+      documentUrlPatterns,
+    }, () => void chrome.runtime.lastError);
+  });
+}
+
+chrome.runtime.onInstalled.addListener(setupContextMenus);
+chrome.runtime.onStartup.addListener(setupContextMenus);
+
+// Unpacked reloads do not always fire onInstalled, so recreate the menus when
+// the service worker starts as well.
+setupContextMenus();
+
+chrome.contextMenus.onClicked.addListener(async (info) => {
+  if (info.menuItemId !== MENU_POSITIVE && info.menuItemId !== MENU_NEGATIVE) return;
+
+  let keyword = String(info.selectionText || '').replace(/\s+/g, ' ').trim();
+  if (!keyword) return;
+
+  keyword = keyword.replace(/^#+/, '').trim();
+  if (!keyword) return;
+
+  if (keyword.length > MAX_KEYWORD_LENGTH) {
+    await setNotification({ error: 'Keyword is too long (max 100 characters)' });
+    return;
+  }
+
+  const storageKey = info.menuItemId === MENU_POSITIVE ? KEYWORDS_KEY : NEGATIVE_KEYWORDS_KEY;
+  const listType = info.menuItemId === MENU_POSITIVE ? 'positive' : 'negative';
+
+  try {
+    const result = await chrome.storage.local.get(storageKey);
+    const list = normalizeKeywordList(result[storageKey]);
+    const lower = keyword.toLowerCase();
+
+    if (list.some(k => k.toLowerCase() === lower)) {
+      await chrome.storage.local.set({
+        [NOTIFICATION_KEY]: { keyword, listType, duplicate: true },
+      });
+      return;
+    }
+
+    list.push(keyword);
+    await chrome.storage.local.set({
+      [storageKey]: list,
+      [NOTIFICATION_KEY]: { keyword, listType },
+    });
+  } catch (err) {
+    console.warn('[X Buddy] Failed to save keyword from context menu:', err);
+    await setNotification({ error: 'Failed to save keyword' });
+  }
+});
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'xb:generate-reply') {

@@ -16,6 +16,7 @@
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
 - **Backup.** Export keywords, toggles, and glow color to a JSON file, and import them on another browser.
+- **Right-click capture.** Select a word or hashtag on X and add it to either list from the context menu, with a toast confirming the add.
 - **Magic Reply.** Open a reply and click the Magic Reply button. Your local model writes a draft straight into the composer. You can edit it before posting.
 - **Stays local.** No accounts, no API keys, no tracking. Your keywords and posts go to the model on your computer and nowhere else.
 
@@ -91,6 +92,14 @@ Matching posts use the new color immediately, and the choice survives reloads.
 
 A full config restore replaces the current keyword lists, toggles, and glow color. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
 
+### Add a keyword from the page
+
+1. Select a word or phrase on X
+2. Right-click and choose **Add "..." to Positive Keywords** or **Add "..." to Negative Keywords**
+3. A toast confirms the add, and the popup list updates
+
+Right-clicking a hashtag selects it for you. A leading `#` is stripped, so adding `#AI` stores `AI` and matches both hashtag and plain mentions.
+
 ### Draft a reply
 
 1. Open a post's reply dialog, or open the post detail page
@@ -111,6 +120,7 @@ The reply goes into the composer, not straight to X. You always get the final sa
 | A post I want to read is hidden | Check the negative list and the negative toggle. A negative keyword wins over a positive glow. Remove the word, or turn negative filtering off, to bring the post back. |
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
+| Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
 
 ## Status
 
@@ -122,6 +132,7 @@ X Buddy is an early build. What is done and what is next:
 - [x] Keyword search, pagination, and clear-all controls
 - [x] Configurable glow color
 - [x] Full-config export/import
+- [x] Right-click keyword capture
 - [x] Magic Reply with a local model
 - [ ] Support X's new web layout
 - [ ] Settings page for the server URL and model
@@ -131,7 +142,7 @@ X started testing a new web layout for logged-in users in late 2026. It removes 
 
 ## Privacy
 
-- The extension asks for `storage` so it can remember your keywords.
+- The extension asks for `storage` so it can remember your keywords, and `contextMenus` so you can right-click text to add it to a list.
 - It can talk to `x.com`, `twitter.com`, and `localhost:8080`. That is it.
 - Your keyword list lives in Chrome's local storage.
 - Posts are sent to your own model server. Nothing is sent to us, and there is no analytics or remote code.

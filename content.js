@@ -8,6 +8,7 @@ const ENABLED_KEY = 'xbBuddyEnabled';
 const POSITIVE_ENABLED_KEY = 'xbBuddyPositiveEnabled';
 const NEGATIVE_ENABLED_KEY = 'xbBuddyNegativeEnabled';
 const GLOW_KEY = 'xbBuddyGlowColor';
+const NOTIFICATION_KEY = 'xbBuddyNotification';
 const DEFAULT_GLOW_COLOR = '#00ff41';
 const PROCESSED_ATTR = 'data-xb-processed';
 const MAGIC_REPLY_ATTR = 'data-magic-reply';
@@ -40,6 +41,8 @@ let processedDialogs = new WeakSet();  // prevent re-injecting buttons
 let observer = null;
 let safetyInterval = null;
 let reprocessTimer = null;
+let pageToastEl = null;
+let pageToastTimer = null;
 
 // Debug logging toggle — set to true to see what the extension is doing
 const DEBUG = false;
@@ -73,6 +76,7 @@ window.addEventListener('unhandledrejection', (e) => {
   try {
     await loadSettings();
     listenForStorageChanges();
+    await consumePendingNotification();
 
     if (!enabled) {
       debug('Extension disabled on load');
@@ -180,6 +184,10 @@ function listenForStorageChanges() {
       debug('Glow color updated:', glowColor);
     }
 
+    if (changes[NOTIFICATION_KEY] !== undefined) {
+      consumeNotification(changes[NOTIFICATION_KEY].newValue);
+    }
+
     if (!enabled) return;
 
     if (changes[POSITIVE_ENABLED_KEY] !== undefined) {
@@ -252,6 +260,98 @@ function scheduleReprocess() {
     scanAllPosts();
   }, 100);
 }
+
+// ===================================================================
+//  PAGE TOAST / CONTEXT MENU FEEDBACK
+// ===================================================================
+
+function showPageToast(message, type = 'info') {
+  if (!document.body) return;
+  if (pageToastTimer) {
+    clearTimeout(pageToastTimer);
+    pageToastTimer = null;
+  }
+  if (pageToastEl) {
+    pageToastEl.remove();
+    pageToastEl = null;
+  }
+
+  const el = document.createElement('div');
+  el.className = `xb-toast ${type}`;
+  el.textContent = message;
+  el.setAttribute('role', 'status');
+  document.body.appendChild(el);
+  pageToastEl = el;
+
+  void el.offsetHeight;
+  el.classList.add('visible');
+
+  pageToastTimer = setTimeout(() => {
+    pageToastTimer = null;
+    el.classList.add('fade-out');
+    setTimeout(() => {
+      if (el.parentNode) el.remove();
+      if (pageToastEl === el) pageToastEl = null;
+    }, 300);
+  }, 2500);
+}
+
+function consumeNotification(notification) {
+  if (!notification) return;
+
+  if (notification.error) {
+    showPageToast(notification.error, 'error');
+  } else if (notification.keyword && notification.listType) {
+    const label = notification.listType === 'negative' ? 'negative' : 'positive';
+    showPageToast(
+      notification.duplicate
+        ? `"${notification.keyword}" already in ${label} keywords`
+        : `✓ Added "${notification.keyword}" to ${label} keywords`,
+      notification.duplicate ? 'info' : 'success'
+    );
+  }
+
+  try {
+    const pending = chrome.storage.local.remove(NOTIFICATION_KEY);
+    if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+  } catch (err) {
+    console.warn('[X Buddy] Could not clear notification:', err);
+  }
+}
+
+async function consumePendingNotification() {
+  try {
+    const result = await chrome.storage.local.get(NOTIFICATION_KEY);
+    consumeNotification(result[NOTIFICATION_KEY]);
+  } catch (err) {
+    console.warn('[X Buddy] Could not read pending notification:', err);
+  }
+}
+
+// Right-clicking a hashtag normally leaves selectionText empty. Selecting the
+// anchor contents lets the background context menu receive the hashtag text.
+document.addEventListener('contextmenu', (e) => {
+  let el = e.target;
+  if (el.nodeType === Node.TEXT_NODE) el = el.parentElement;
+  if (!el || !el.closest) return;
+
+  const anchor = el.closest('a');
+  if (!anchor) return;
+
+  const text = (anchor.textContent || '').trim();
+  if (!text.startsWith('#') || text.length < 2) return;
+
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(anchor);
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  } catch (err) {
+    console.warn('[X Buddy] Could not select hashtag:', err);
+  }
+});
 
 // ===================================================================
 //  MUTATION OBSERVER
