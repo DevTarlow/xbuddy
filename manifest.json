@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X Buddy",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Highlight and hide keywords on X/Twitter, with AI-powered replies via a local LLM.",
   "icons": {
     "16": "icons/icon16.png",
@@ -31,6 +31,7 @@
         "https://twitter.com/*"
       ],
       "js": [
+        "shared.js",
         "content.js"
       ],
       "css": [

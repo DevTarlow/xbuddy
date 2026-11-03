@@ -141,6 +141,41 @@
       color: #5a5e67;
     }
 
+    .input-row select {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #2a2d35;
+      background: #1a1d23;
+      color: #e1e3e6;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-row select:focus {
+      border-color: #00ff41;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #2a2d35;
+      background: #1a1d23;
+      color: #e1e3e6;
+      font-size: 13px;
+      line-height: 1.4;
+      outline: none;
+      font-family: inherit;
+      resize: vertical;
+      margin-bottom: 8px;
+    }
+
+    textarea:focus {
+      border-color: #00ff41;
+    }
+
     .input-row button {
       padding: 8px 14px;
       border-radius: 6px;
@@ -383,6 +418,25 @@
       color: #ff4444;
     }
 
+    .input-row .btn-outline {
+      width: auto;
+      margin-top: 0;
+      border: 1px solid #2a2d35;
+      background: transparent;
+      color: #8a8f9a;
+      font-weight: 500;
+    }
+
+    .input-row .btn-outline:hover {
+      background: #1a1d23;
+      color: #e1e3e6;
+    }
+
+    .btn-outline:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
     .collapsible {
       margin-top: 2px;
     }
@@ -413,7 +467,7 @@
 
     .collapsible-body {
       overflow: hidden;
-      max-height: 600px;
+      max-height: 1200px;
       transition: max-height 0.3s ease;
     }
 
@@ -569,8 +623,19 @@
           <button id="save-glow-color-btn">Save</button>
         </div>
 
+        <div class="settings-label" style="margin-top: 14px;">Reply Tones:</div>
+        <div class="input-row" style="margin-bottom: 8px;">
+          <select id="tone-select" aria-label="Reply tone"></select>
+        </div>
+        <div class="settings-label" id="tone-prompt-label">System Prompt (Generic):</div>
+        <textarea id="tone-prompt-input" rows="4" placeholder="System prompt for this tone…"></textarea>
+        <div class="input-row" style="margin-bottom: 4px;">
+          <button class="btn-outline" id="restore-tone-btn">Restore Default</button>
+          <button id="save-tone-btn">Save</button>
+        </div>
+
         <div class="settings-label" style="margin-top: 14px;">Export / Import:</div>
-        <div class="section-hint" style="margin-bottom: 8px;">Back up keywords, toggles, and glow color as JSON.</div>
+        <div class="section-hint" style="margin-bottom: 8px;">Back up keywords, toggles, glow color, and tone prompts as JSON.</div>
         <div class="action-row">
           <button class="btn-outline" id="export-btn">Export All</button>
           <button class="btn-outline" id="import-btn">Import</button>
@@ -582,6 +647,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="shared.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

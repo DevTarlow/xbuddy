@@ -47,6 +47,11 @@ const settingsArrow = document.getElementById('settings-arrow');
 const settingsBody = document.getElementById('settings-body');
 const glowColorInput = document.getElementById('glow-color-input');
 const saveGlowColorBtn = document.getElementById('save-glow-color-btn');
+const toneSelect = document.getElementById('tone-select');
+const tonePromptLabel = document.getElementById('tone-prompt-label');
+const tonePromptInput = document.getElementById('tone-prompt-input');
+const saveToneBtn = document.getElementById('save-tone-btn');
+const restoreToneBtn = document.getElementById('restore-tone-btn');
 const exportBtn = document.getElementById('export-btn');
 const importBtn = document.getElementById('import-btn');
 const importInput = document.getElementById('import-input');
@@ -65,6 +70,8 @@ let positiveSearchQuery = '';
 let negativeSearchQuery = '';
 let glowColor = DEFAULT_GLOW_COLOR;
 let settingsOpen = false;
+let tonePrompts = {};
+let currentToneId = DEFAULT_TONE_ID;
 let toastTimer = null;
 
 // --- Toast ---
@@ -112,6 +119,48 @@ function normalizeKeywords(arr) {
 
 function isValidHexColor(value) {
   return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+// --- Reply tones ---
+function getCurrentTone() {
+  return TONES.find(tone => tone.id === currentToneId)
+    || TONES.find(tone => tone.id === DEFAULT_TONE_ID)
+    || TONES[0];
+}
+
+function populateToneSelector() {
+  const tone = getCurrentTone();
+  currentToneId = tone.id;
+  toneSelect.innerHTML = '';
+  for (const item of TONES) {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.textContent = item.label;
+    toneSelect.appendChild(option);
+  }
+  toneSelect.value = currentToneId;
+}
+
+function updateToneEditor() {
+  const tone = getCurrentTone();
+  tonePromptLabel.textContent = `System Prompt (${tone.label}):`;
+  tonePromptInput.value = tonePrompts[tone.id] || tone.defaultPrompt;
+}
+
+async function loadTonePrompts() {
+  const keys = TONES.map(tone => TONE_PROMPT_PREFIX + tone.id);
+  try {
+    const stored = await chrome.storage.local.get(keys);
+    for (const tone of TONES) {
+      const value = stored[TONE_PROMPT_PREFIX + tone.id];
+      tonePrompts[tone.id] = typeof value === 'string' && value.trim()
+        ? value
+        : tone.defaultPrompt;
+    }
+  } catch (e) {
+    console.error('[X Buddy] Failed to load tone prompts:', e);
+    for (const tone of TONES) tonePrompts[tone.id] = tone.defaultPrompt;
+  }
 }
 
 // --- Storage helpers ---
@@ -341,6 +390,7 @@ function buildConfig() {
     negativeEnabled,
     enabled,
     glowColor,
+    tonePrompts: { ...tonePrompts },
   };
 }
 
@@ -377,6 +427,7 @@ function refreshFromState() {
   applyNegativeState();
   renderKeywords();
   renderNegativeKeywords();
+  updateToneEditor();
 }
 
 async function importFullConfig(data) {
@@ -392,6 +443,14 @@ async function importFullConfig(data) {
   if (typeof data.negativeEnabled === 'boolean') toSet[NEGATIVE_ENABLED_KEY] = data.negativeEnabled;
   if (typeof data.enabled === 'boolean') toSet[ENABLED_KEY] = data.enabled;
   if (isValidHexColor(data.glowColor)) toSet[GLOW_KEY] = data.glowColor;
+  if (data.tonePrompts && typeof data.tonePrompts === 'object') {
+    for (const tone of TONES) {
+      const prompt = data.tonePrompts[tone.id];
+      if (typeof prompt === 'string' && prompt.trim()) {
+        toSet[TONE_PROMPT_PREFIX + tone.id] = prompt;
+      }
+    }
+  }
 
   if (Object.keys(toSet).length === 0) {
     flashSaveFeedback(importBtn, 'No settings in file');
@@ -414,6 +473,14 @@ async function importFullConfig(data) {
   if (toSet[POSITIVE_ENABLED_KEY] !== undefined) positiveEnabled = toSet[POSITIVE_ENABLED_KEY];
   if (toSet[NEGATIVE_ENABLED_KEY] !== undefined) negativeEnabled = toSet[NEGATIVE_ENABLED_KEY];
   if (toSet[GLOW_KEY]) glowColor = toSet[GLOW_KEY];
+  if (data.tonePrompts && typeof data.tonePrompts === 'object') {
+    for (const tone of TONES) {
+      const prompt = data.tonePrompts[tone.id];
+      if (typeof prompt === 'string' && prompt.trim()) {
+        tonePrompts[tone.id] = prompt;
+      }
+    }
+  }
 
   refreshFromState();
   flashSaveFeedback(importBtn, 'Imported ✓');
@@ -707,6 +774,33 @@ saveGlowColorBtn.addEventListener('click', async () => {
   }
 });
 
+toneSelect.addEventListener('change', () => {
+  currentToneId = toneSelect.value;
+  updateToneEditor();
+});
+
+saveToneBtn.addEventListener('click', async () => {
+  const value = tonePromptInput.value.trim();
+  if (!value) {
+    flashSaveFeedback(saveToneBtn, 'Prompt is empty');
+    return;
+  }
+  const tone = getCurrentTone();
+  if (await saveFlag(TONE_PROMPT_PREFIX + tone.id, value)) {
+    tonePrompts[tone.id] = value;
+    flashSaveFeedback(saveToneBtn, 'Saved ✓');
+  }
+});
+
+restoreToneBtn.addEventListener('click', async () => {
+  const tone = getCurrentTone();
+  tonePromptInput.value = tone.defaultPrompt;
+  if (await saveFlag(TONE_PROMPT_PREFIX + tone.id, tone.defaultPrompt)) {
+    tonePrompts[tone.id] = tone.defaultPrompt;
+    flashSaveFeedback(restoreToneBtn, 'Restored ✓');
+  }
+});
+
 exportBtn.addEventListener('click', exportConfig);
 importBtn.addEventListener('click', () => importInput.click());
 importInput.addEventListener('change', handleImportFile);
@@ -714,6 +808,9 @@ importInput.addEventListener('change', handleImportFile);
 // --- Init ---
 (async function init() {
   await loadState();
+  await loadTonePrompts();
+  populateToneSelector();
+  updateToneEditor();
   masterToggle.checked = enabled;
   positiveToggle.checked = positiveEnabled;
   negativeToggle.checked = negativeEnabled;

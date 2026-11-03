@@ -55,10 +55,13 @@ There is no automated test suite. Before committing a behavior change, check:
 - Search filters either list, pagination appears past five items, and Clear All empties the list after confirmation.
 - Duplicate and over-100-character keywords are rejected with button feedback.
 - Changing the glow color updates existing and new glowing posts, and the choice survives a reload.
-- Export All downloads a JSON config; importing it restores the lists, toggles, and glow color.
+- Export All downloads a JSON config; importing it restores the lists, toggles, glow color, and tone prompts.
 - Importing a legacy file with only `positive`/`negative` arrays merges keywords instead of replacing the lists.
 - Right-clicking a selection or hashtag offers both keyword lists, saves the keyword, shows a page toast, and the popup reflects the change.
 - Magic Reply appears in a reply dialog and on a post detail page, but not in the home "Post" box.
+- Magic Reply opens a tone menu with Generic, Agree, Disagree, Funny, and Informative.
+- Choosing a tone sends that tone and fills the composer.
+- Editing a tone prompt in Settings changes the generated reply; Restore Default resets it.
 - Magic Reply fills the composer, the send button enables, and an existing draft is replaced rather than appended.
 - The popup shows the real LLM status.
 - No new errors in the x.com console or the service worker console.
@@ -67,11 +70,12 @@ There is no automated test suite. Before committing a behavior change, check:
 
 ```
 manifest.json          — MV3 manifest
+shared.js              — Shared reply-tone presets and default prompts
 popup.html             — Popup UI (340px, dark theme)
-popup.js               — Popup logic: positive/negative keyword CRUD, toggles, LLM status
-content.js             — Content script: keyword glow/filter, Magic Reply
-background.js          — Service worker: local LLM request + health check, right-click keyword menus
-styles.css             — Content script styles (glow + hidden post + magic reply button)
+popup.js               — Popup logic: keyword CRUD, toggles, tone editor, LLM status
+content.js             — Content script: keyword glow/filter, Magic Reply tone menu
+background.js          — Service worker: local LLM request + health check, tone prompt lookup, right-click menus
+styles.css             — Content script styles (glow + hidden post + Magic Reply + tone menu)
 icons/                 — Extension icons (16, 48, 128 PNG)
 ```
 
@@ -87,6 +91,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 | `xbBuddyPositiveEnabled` | `boolean` | `true` | Positive highlighting on/off |
 | `xbBuddyNegativeEnabled` | `boolean` | `true` | Negative filtering on/off |
 | `xbBuddyGlowColor` | `string` | `#00ff41` | Highlight color (`#rrggbb`) |
+| `xbBuddyTonePrompt_<id>` | `string` | `TONES[*].defaultPrompt` | Per-tone Magic Reply system prompt (`generic`, `agree`, `disagree`, `funny`, `informative`) |
 | `xbBuddySettingsOpen` | `boolean` | `false` | Popup Settings section open state |
 | `xbBuddyNotification` | `object` | absent | Transient context-menu toast (`keyword`, `listType`, `duplicate`, or `error`) |
 
@@ -95,6 +100,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 - Use `const` / `let`, never `var`
 - Async functions where storage/network is involved
 - `DEBUG` flag in `content.js` toggles verbose console logging
+- `shared.js` loads before `content.js` and `popup.js`, and via `importScripts('shared.js')` in the service worker. Tone IDs are stable: stored prompts and exported configs use them.
 - Error states surface via `console.error` + `showToast()` in popup
 - DOM dedup uses `WeakSet` + `data-xb-processed` / `data-magic-reply` attributes. The markers are verified against the live button before skipping, because X's React re-renders can remove injected nodes.
 - Classic-UI DOM queries use `data-testid` selectors matching X's DOM conventions
@@ -104,15 +110,17 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 - **Tweet discovery**: `article[data-testid="tweet"]` via MutationObserver with 200ms cooldown. Relevance is checked against `MutationRecord.addedNodes` before scanning.
 - **Keyword matching**: whole-word, case-insensitive regex with the `iu` flags. Regex special chars are escaped. The boundary is only added on a side that starts/ends with a word character, so `#AI`, `C++`, and `3.5` work while `ai` still does not match `rain`.
 - **Negative filtering**: Matching posts get `.xb-hidden-post` (`display: none !important`) on the nearest `div[data-testid="cellInnerDiv"]` timeline row, falling back to the tweet article when the row contains a composer. A negative match wins over a positive glow. Negative matching only uses tweet body text, not the container-wide fallback that can include author names or UI labels.
-- **Magic Reply injection**: Injects a `button.magic-reply-btn` near the send button in dialog and inline composers. Dialog detection uses `div[role="dialog"]` and `[data-testid="sheetDialog"]`.
+- **Magic Reply injection**: Injects a `div.magic-reply-wrapper` containing `button.magic-reply-btn` near the send button in dialog and inline composers. Clicking the button opens the tone menu. Dialog detection uses `div[role="dialog"]` and `[data-testid="sheetDialog"]`.
+- **Reply tones**: `shared.js` defines `TONES` (Generic, Agree, Disagree, Funny, Informative) and `TONE_PROMPT_PREFIX`. The popup edits `xbBuddyTonePrompt_<id>`; the content menu sends `toneId` with `xb:generate-reply`; `background.js` loads that prompt (or the built-in default) per request. Unknown tone IDs fall back to `generic`.
+- **Tone menu**: a fixed-position `div.magic-reply-dropdown` is appended to `document.body` with one button per tone. It closes on selection, outside click, or Escape, repositions on scroll/resize, flips above the trigger near the viewport bottom, and is removed when the master toggle pauses.
 - **Inline composer edge case**: On tweet detail pages, the composer is inline (not in a dialog). The tweet text lives ABOVE the composer in the DOM — `findTweetTextBefore()` picks the last `[data-testid="tweetText"]` that precedes the composer. The button is only injected on reply surfaces (`/status/`, `/compose/post`, or `in_reply_to=`), not the home timeline's "Post" box.
 - **Text insertion**: X's composer is Draft.js, whose DOM is owned by React. `insertTextIntoReply()` dispatches a synthetic `paste` event (after focusing and selecting the draft) so Draft updates its own `EditorState` and enables the Reply button. Do NOT use `textContent`/`execCommand` on the Draft DOM — it desyncs React and throws `removeChild is not a child of this node`.
 - **LLM**: OpenAI-compatible endpoint at `http://localhost:8080` (model `gemma-4-E4B-it-QAT-Q4_0.gguf`), called from `background.js`. Content-script requests to loopback are blocked by Chrome's Local Network Access policy; the service worker has the `localhost` host permission and is allowed. Response parsing handles `message.content`, `delta.content`, `reasoning_content`, and fallback fields. `chat_template_kwargs.enable_thinking = false` disables Gemma's reasoning tokens (~10x faster replies).
 - **Keyword changes**: `resetPostProcessing()` clears `data-xb-processed`, `.xb-glow-post`, and `.xb-hidden-post` before a rescan, so newly added keywords apply to already-rendered posts and removed keywords stop glowing or hiding. Changes are debounced through `scheduleReprocess()`.
-- **Master toggle**: `disableExtension()` stops the observer and safety checks, clears every injected class/marker, and removes Magic Reply buttons. `enableExtension()` reloads settings and rescans. All scan functions are guarded by `enabled`.
+- **Master toggle**: `disableExtension()` stops the observer and safety checks, clears every injected class/marker, closes the tone menu, and removes Magic Reply wrappers. `enableExtension()` reloads settings and rescans. All scan functions are guarded by `enabled`.
 - **Popup lists**: five items per page, case-insensitive search, Clear All behind `confirm()`, and a 100-character limit. Duplicate or over-long adds flash feedback on the Add button; successful adds, clears, and toggle changes use the popup toast (`showToast(msg, 'error')` for failures).
 - **Glow color**: `applyGlowColor()` converts the stored `#rrggbb` value into `--xb-glow-rgb` on `document.documentElement`. The CSS uses `rgba(var(--xb-glow-rgb, 0, 255, 65), …)`, so existing glowing posts recolor immediately without a rescan. Invalid values fall back to `#00ff41`.
-- **Export/import**: version 1 configs are marked `app: 'xbuddy'` and carry both lists, all toggles, and the glow color. A versioned import replaces the present keys in one `chrome.storage.local.set`; legacy files containing only `positive`/`negative` arrays merge additively. Other app markers, invalid JSON, and over-100-character keywords are rejected or skipped.
+- **Export/import**: version 1 configs are marked `app: 'xbuddy'` and carry both lists, all toggles, glow color, and `tonePrompts`. A versioned import replaces the present keys in one `chrome.storage.local.set`; legacy files containing only `positive`/`negative` arrays merge additively. Other app markers, invalid JSON, and over-100-character keywords are rejected or skipped.
 - **Context menus**: `background.js` creates positive/negative selection menus for x.com and twitter.com on install/startup. The click handler trims/collapses whitespace, strips leading `#`, rejects over-100 values, dedupes case-insensitively, and writes the list plus `xbBuddyNotification` in one `set`. The content script shows `showPageToast()` and clears the notification key; a pending notification is also consumed on page load.
 - **Security**: CSP in manifest restricts to `script-src 'self'`. Only `storage` and `contextMenus` permissions are declared, plus host permissions for x.com/twitter.com and `localhost:8080`.
 - **Error boundary**: Global `error` and `unhandledrejection` listeners catch + log exceptions.
@@ -141,6 +149,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 
 - Set `DEBUG = true` at the top of `content.js` for verbose console logging, then reload the extension. There is no runtime toggle wired up.
 - X's React re-renders aggressively. `scanAllDialogs()` / `scanInlineComposers()` re-inject a removed button when the marker attribute survived; if the button still disappears, check the composer selectors.
+- If the tone menu does not open, confirm `shared.js` is listed before `content.js` in the manifest and reload the extension.
 - CSS selectors in `POST_SELECTORS` / `DIALOG_SELECTORS` break when X changes their DOM — most common maint issue. X's new (2026) logged-in UI removes `data-testid` entirely; the classic selectors do not match it.
 
 ## Common Tasks
@@ -150,6 +159,8 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 - **Change hidden style**: Edit `.xb-hidden-post` in `styles.css`; the hide target is chosen by `getHideTarget()` in `content.js`
 - **Add or change a keyword list**: Add the storage key in `content.js`, `popup.js`, and `background.js`, then wire a popup section and a content-script scan branch
 - **Change context menu labels**: Edit the titles in `setupContextMenus()` in `background.js`; menus are recreated on install/startup
-- **Change LLM prompt**: Edit `SYSTEM_PROMPT` in `background.js`
+- **Change a default tone prompt**: Edit the matching `defaultPrompt` in `TONES` in `shared.js`. Saved prompts override the default until the user clicks Restore Default.
+- **Add a reply tone**: Add an entry to `TONES` in `shared.js`. The popup selector, tone editor, Magic Reply menu, and background all read from that array; no other list to update.
+- **Change tone menu labels**: Edit the `label` fields in `TONES` in `shared.js`.
 - **Change LLM endpoint/model**: Update `LLM_URL` / `LLM_MODELS_URL` / `LLM_MODEL` in `background.js`
 - **Add permission**: Edit `permissions` / `host_permissions` in `manifest.json`

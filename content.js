@@ -43,6 +43,10 @@ let safetyInterval = null;
 let reprocessTimer = null;
 let pageToastEl = null;
 let pageToastTimer = null;
+let activeMenuEl = null;
+let activeWrapper = null;
+let toneMenuCloseHandler = null;
+let toneMenuKeyHandler = null;
 
 // Debug logging toggle — set to true to see what the extension is doing
 const DEBUG = false;
@@ -243,6 +247,8 @@ function disableExtension() {
 
   resetPostProcessing();
 
+  closeToneMenu();
+  document.querySelectorAll('.magic-reply-wrapper').forEach((el) => el.remove());
   document.querySelectorAll('.magic-reply-btn').forEach((el) => el.remove());
   document.querySelectorAll(`[${MAGIC_REPLY_ATTR}]`).forEach((el) => {
     el.removeAttribute(MAGIC_REPLY_ATTR);
@@ -608,6 +614,9 @@ function scanAllDialogs() {
       // X re-renders dialogs aggressively. If React removed our button but the
       // marker attribute survived, re-inject instead of skipping forever.
       if (dialog.querySelector('.magic-reply-btn')) continue;
+      dialog.querySelectorAll('.magic-reply-wrapper').forEach((wrapper) => {
+        if (!wrapper.querySelector('.magic-reply-btn')) wrapper.remove();
+      });
       if (dialog.hasAttribute(MAGIC_REPLY_ATTR)) dialog.removeAttribute(MAGIC_REPLY_ATTR);
       processedDialogs.delete(dialog);
       tryInjectMagicReply(dialog);
@@ -657,13 +666,16 @@ function scanInlineComposers() {
     if (!found) continue;
 
     container.setAttribute(MAGIC_REPLY_ATTR, 'true');
+    container.querySelectorAll('.magic-reply-wrapper').forEach((wrapper) => {
+      if (!wrapper.querySelector('.magic-reply-btn')) wrapper.remove();
+    });
     if (!container.querySelector('.magic-reply-btn')) {
-      const btn = createMagicReplyButton(container);
+      const wrapper = createMagicReplyWrapper(container);
       const sendBtn = container.querySelector(
         '[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'
       );
       if (sendBtn?.parentElement) {
-        sendBtn.parentElement.insertBefore(btn, sendBtn);
+        sendBtn.parentElement.insertBefore(wrapper, sendBtn);
       }
     }
   }
@@ -691,22 +703,142 @@ function tryInjectMagicReply(dialog) {
   }
 }
 
-function createMagicReplyButton(dialog) {
+function createMagicReplyWrapper(dialog) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'magic-reply-wrapper';
+
   const btn = document.createElement('button');
+  btn.type = 'button';
   btn.className = 'magic-reply-btn';
   btn.textContent = '✨ Magic Reply';
+  btn.setAttribute('aria-haspopup', 'menu');
+  btn.setAttribute('aria-expanded', 'false');
   btn._resetTimer = null;
-  btn.addEventListener('click', () => handleMagicReplyClick(btn, dialog));
-  return btn;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleToneMenu(wrapper, dialog, btn);
+  });
+
+  wrapper.appendChild(btn);
+  return wrapper;
+}
+
+function toggleToneMenu(wrapper, dialog, trigger) {
+  if (activeWrapper === wrapper && activeMenuEl) {
+    closeToneMenu();
+  } else {
+    openToneMenu(wrapper, dialog, trigger);
+  }
+}
+
+function openToneMenu(wrapper, dialog, trigger) {
+  closeToneMenu();
+  activeWrapper = wrapper;
+  trigger.setAttribute('aria-expanded', 'true');
+
+  const menu = createToneMenu(dialog, trigger);
+  document.body.appendChild(menu);
+  activeMenuEl = menu;
+  if (menu._reposition) menu._reposition();
+
+  toneMenuCloseHandler = (e) => {
+    if (!wrapper.contains(e.target) && !menu.contains(e.target)) {
+      closeToneMenu();
+    }
+  };
+  setTimeout(() => {
+    if (toneMenuCloseHandler) {
+      document.addEventListener('click', toneMenuCloseHandler);
+    }
+  }, 0);
+
+  toneMenuKeyHandler = (e) => {
+    if (e.key === 'Escape') closeToneMenu();
+  };
+  document.addEventListener('keydown', toneMenuKeyHandler);
+}
+
+function closeToneMenu() {
+  if (toneMenuCloseHandler) {
+    document.removeEventListener('click', toneMenuCloseHandler);
+    toneMenuCloseHandler = null;
+  }
+  if (toneMenuKeyHandler) {
+    document.removeEventListener('keydown', toneMenuKeyHandler);
+    toneMenuKeyHandler = null;
+  }
+
+  if (activeWrapper) {
+    const trigger = activeWrapper.querySelector('.magic-reply-btn');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  if (activeMenuEl) {
+    if (activeMenuEl._reposition) {
+      window.removeEventListener('scroll', activeMenuEl._reposition, true);
+      window.removeEventListener('resize', activeMenuEl._reposition);
+    }
+    activeMenuEl.remove();
+    activeMenuEl = null;
+  }
+
+  activeWrapper = null;
+}
+
+function createToneMenu(dialog, trigger) {
+  const rect = trigger.getBoundingClientRect();
+
+  const menu = document.createElement('div');
+  menu.className = 'magic-reply-dropdown open';
+  menu.setAttribute('role', 'menu');
+  menu.style.position = 'fixed';
+  menu.style.left = `${rect.left}px`;
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.zIndex = '2147483647';
+
+  for (const tone of TONES) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'magic-reply-dropdown-item';
+    item.textContent = tone.label;
+    item.setAttribute('role', 'menuitem');
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeToneMenu();
+      handleMagicReplyClick(trigger, dialog, tone.id);
+    });
+    menu.appendChild(item);
+  }
+
+  const reposition = () => {
+    if (!trigger.isConnected) {
+      closeToneMenu();
+      return;
+    }
+    const r = trigger.getBoundingClientRect();
+    menu.style.left = `${r.left}px`;
+    menu.style.top = `${r.bottom + 4}px`;
+    if (r.bottom + menu.offsetHeight + 4 > window.innerHeight) {
+      menu.style.top = `${Math.max(8, r.top - menu.offsetHeight - 4)}px`;
+    }
+  };
+  menu._reposition = reposition;
+  window.addEventListener('scroll', reposition, true);
+  window.addEventListener('resize', reposition);
+
+  return menu;
 }
 
 function injectButtonNearComposer(dialog) {
   if (dialog.querySelector('.magic-reply-btn')) return false;
+  dialog.querySelectorAll('.magic-reply-wrapper').forEach((wrapper) => {
+    if (!wrapper.querySelector('.magic-reply-btn')) wrapper.remove();
+  });
 
   const textarea = dialog.querySelector('div[contenteditable="true"]');
   if (!textarea) return false;
 
-  const btn = createMagicReplyButton(dialog);
+  const wrapper = createMagicReplyWrapper(dialog);
 
   // Try to find the send button to place our button near it
   const sendButton = dialog.querySelector(
@@ -715,14 +847,14 @@ function injectButtonNearComposer(dialog) {
 
   if (sendButton && sendButton.parentElement) {
     // Insert before the send button in its container
-    sendButton.parentElement.insertBefore(btn, sendButton);
+    sendButton.parentElement.insertBefore(wrapper, sendButton);
   } else {
     // Fallback: insert next to the textarea
     const next = textarea.nextElementSibling;
     if (next) {
-      textarea.parentElement.insertBefore(btn, next);
+      textarea.parentElement.insertBefore(wrapper, next);
     } else {
-      textarea.parentElement.appendChild(btn);
+      textarea.parentElement.appendChild(wrapper);
     }
   }
 
@@ -733,8 +865,18 @@ function injectButtonNearComposer(dialog) {
 //  MAGIC REPLY HANDLER
 // ===================================================================
 
-async function handleMagicReplyClick(btn, dialog) {
+async function handleMagicReplyClick(btn, dialog, toneId) {
   if (!enabled) return;
+  if (btn._resetTimer) {
+    clearTimeout(btn._resetTimer);
+    btn._resetTimer = null;
+  }
+
+  const tone = TONES.find((t) => t.id === toneId)
+    || TONES.find((t) => t.id === DEFAULT_TONE_ID)
+    || TONES[0];
+  const originalText = btn.textContent;
+
   // 1. Extract post text. Prefer a tweet body inside the container (reply
   // dialog); otherwise use the tweet that precedes an inline composer. The
   // generic text walker is last because a composer container also contains
@@ -749,22 +891,21 @@ async function handleMagicReplyClick(btn, dialog) {
     btn.textContent = '✨ No text found';
     btn.classList.add('failed');
     setTimeout(() => {
-      btn.textContent = '✨ Magic Reply';
+      btn.textContent = originalText;
       btn.classList.remove('failed');
     }, 2000);
     return;
   }
 
   // 2. Update button state
-  const originalText = btn.textContent;
-  btn.textContent = '✨ Thinking…';
+  btn.textContent = `✨ ${tone.label}…`;
   btn.disabled = true;
   btn.classList.remove('failed');
 
   try {
     // 3. Call local LLM
-    console.log('[X Buddy] Post text for LLM:', postText);
-    const reply = await generateReply(postText);
+    console.log(`[X Buddy] Post text for ${tone.label} reply:`, postText);
+    const reply = await generateReply(postText, tone.id);
 
     // The master toggle may have paused the extension while the LLM was working.
     if (!enabled) return;
@@ -865,12 +1006,12 @@ function extractPostText(dialog) {
   return '';
 }
 
-async function generateReply(postText) {
+async function generateReply(postText, toneId) {
   // The request is proxied through background.js. A content script request to
   // http://localhost is blocked by Chrome's Local Network Access policy.
   let response;
   try {
-    response = await chrome.runtime.sendMessage({ type: 'xb:generate-reply', postText });
+    response = await chrome.runtime.sendMessage({ type: 'xb:generate-reply', postText, toneId });
   } catch {
     throw new Error('Background unavailable — reload the extension');
   }

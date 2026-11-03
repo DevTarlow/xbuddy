@@ -4,6 +4,8 @@
 // via Local Network Access. Extension pages/service workers with the
 // localhost host permission are allowed to make the request.
 
+importScripts('shared.js');
+
 // Keep these storage keys in sync with content.js and popup.js.
 const KEYWORDS_KEY = 'xbBuddyKeywords';
 const NEGATIVE_KEYWORDS_KEY = 'xbBuddyNegativeKeywords';
@@ -17,12 +19,24 @@ const LLM_MODELS_URL = 'http://localhost:8080/v1/models';
 const LLM_MODEL = 'gemma-4-E4B-it-QAT-Q4_0.gguf';
 const REQUEST_TIMEOUT_MS = 60000;
 
-const SYSTEM_PROMPT = [
-  'You write replies on X (Twitter) as a real person.',
-  'Reply to the post below with exactly ONE short, natural reply, under 2 sentences.',
-  'Output only the reply text: no options, no numbered lists, no quotation marks, no preamble, no explanation, no hashtags, and no emojis.',
-  'Be specific to the post. Never mention being an AI or an assistant.',
-].join(' ');
+function getTone(toneId) {
+  return TONES.find((tone) => tone.id === toneId)
+    || TONES.find((tone) => tone.id === DEFAULT_TONE_ID)
+    || TONES[0];
+}
+
+async function loadTonePrompt(toneId) {
+  const tone = getTone(toneId);
+  const key = TONE_PROMPT_PREFIX + tone.id;
+  try {
+    const stored = await chrome.storage.local.get(key);
+    const value = stored[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  } catch (err) {
+    console.warn('[X Buddy] Could not load tone prompt:', err);
+  }
+  return tone.defaultPrompt;
+}
 
 function cleanReply(text) {
   let out = String(text || '').trim();
@@ -32,14 +46,16 @@ function cleanReply(text) {
   return out;
 }
 
-async function generateReply(postText) {
+async function generateReply(postText, toneId) {
   const post = String(postText || '').trim().slice(0, 6000);
   if (!post) throw new Error('No post text to reply to');
+
+  const systemPrompt = await loadTonePrompt(toneId);
 
   const body = JSON.stringify({
     model: LLM_MODEL,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: `Write a reply to this post:\n\n${post}` },
     ],
     temperature: 0.7,
@@ -182,7 +198,7 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'xb:generate-reply') {
-    generateReply(message.postText)
+    generateReply(message.postText, message.toneId)
       .then((reply) => sendResponse({ ok: true, reply }))
       .catch((err) => sendResponse({ ok: false, error: err?.message || 'LLM request failed' }));
     return true; // async response

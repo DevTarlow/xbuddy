@@ -15,9 +15,9 @@
 - **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting and negative filtering.
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
-- **Backup.** Export keywords, toggles, and glow color to a JSON file, and import them on another browser.
+- **Backup.** Export keywords, toggles, glow color, and tone prompts to a JSON file, and import them on another browser.
 - **Right-click capture.** Select a word or hashtag on X and add it to either list from the context menu, with a toast confirming the add.
-- **Magic Reply.** Open a reply and click the Magic Reply button. Your local model writes a draft straight into the composer. You can edit it before posting.
+- **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt. You can edit the draft before posting.
 - **Stays local.** No accounts, no API keys, no tracking. Your keywords and posts go to the model on your computer and nowhere else.
 
 ## What you need
@@ -38,7 +38,7 @@ llama-server -m path/to/gemma-4-E4B-it-QAT-Q4_0.gguf --port 8080
 
 With LM Studio, start the local server on port `8080` and load the model there.
 
-If your server uses a different port or model name, edit `LLM_URL` / `LLM_MODEL` in `background.js` for now. The popup's **Settings** section covers keywords and backups; a proper LLM settings page is on the roadmap.
+If your server uses a different port or model name, edit `LLM_URL` / `LLM_MODEL` in `background.js` for now. The popup's **Settings** section covers keywords, reply tones, and backups; a proper LLM settings page is on the roadmap.
 
 ## Install
 
@@ -92,7 +92,7 @@ Matching posts use the new color immediately, and the choice survives reloads.
 2. Click **Export All** to download `xbuddy-config.json`
 3. On another browser, click **Import** and pick that file
 
-A full config restore replaces the current keyword lists, toggles, and glow color. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
+A full config restore replaces the current keyword lists, toggles, glow color, and tone prompts. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
 
 ### Add a keyword from the page
 
@@ -106,10 +106,20 @@ Right-clicking a hashtag selects it for you. A leading `#` is stripped, so addin
 
 1. Open a post's reply dialog, or open the post detail page
 2. Click **✨ Magic Reply** next to the send button
-3. Wait a moment while your model writes
-4. Edit the draft if you want, then post it
+3. Choose a tone: **Generic**, **Agree**, **Disagree**, **Funny**, or **Informative**
+4. Wait a moment while your model writes
+5. Edit the draft if you want, then post it
 
 The reply goes into the composer, not straight to X. You always get the final say.
+
+### Edit reply tones
+
+1. Click the X Buddy icon and expand **Settings**
+2. Under **Reply Tones**, choose the tone you want to edit
+3. Change the system prompt, then click **Save**
+4. Click **Restore Default** to put the built-in prompt back
+
+Each tone's prompt is saved separately. The Magic Reply menu uses whatever prompt is saved for the tone you pick.
 
 ## Troubleshooting
 
@@ -122,16 +132,15 @@ The reply goes into the composer, not straight to X. You always get the final sa
 | A post I want to read is hidden | Check the negative list and the negative toggle. A negative keyword wins over a positive glow. Remove the word, or turn negative filtering off, to bring the post back. |
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
+| Tone menu does not open | Reload the extension at `chrome://extensions` and refresh x.com. The menu is injected next to the reply send button on the classic layout. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
 | Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.2.0
+## What's new in 1.3.0
 
-- Negative keyword filtering, with a master switch and separate positive and negative toggles.
-- Search, five-item pages, and Clear All for both keyword lists.
-- A configurable glow color.
-- Export/import for keywords, toggles, and glow color.
-- Right-click capture for selections and hashtags.
+- Magic Reply now offers five tones: Generic, Agree, Disagree, Funny, and Informative.
+- Each tone has its own editable prompt in **Settings → Reply Tones**, plus a Restore Default button.
+- Tone prompts are included in Export All / Import.
 
 ## Status
 
@@ -145,6 +154,7 @@ X Buddy is an early build. What is done and what is next:
 - [x] Full-config export/import
 - [x] Right-click keyword capture
 - [x] Magic Reply with a local model
+- [x] Five reply tones with editable prompts
 - [ ] Support X's new web layout
 - [ ] LLM settings page for the server URL and model
 - [ ] Chrome Web Store release
@@ -155,7 +165,7 @@ X started testing a new web layout for logged-in users in late 2026. It removes 
 
 - The extension asks for `storage` so it can remember your keywords, and `contextMenus` so you can right-click text to add it to a list.
 - It can talk to `x.com`, `twitter.com`, and `localhost:8080`. That is it.
-- Your keyword list lives in Chrome's local storage.
+- Your keyword list and tone prompts live in Chrome's local storage.
 - Posts are sent to your own model server. Nothing is sent to us, and there is no analytics or remote code.
 
 ## Contributing
