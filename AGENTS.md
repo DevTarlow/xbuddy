@@ -14,7 +14,7 @@ We work one task at a time. The flow is:
 
 1. Make the change.
 2. Test it manually in Chrome (see the checklist below).
-3. Update the docs if behavior, setup, or selectors changed.
+3. Update `README.md` for any user-facing change (feature, setting, permission, setup step, or troubleshooting case), and update `AGENTS.md` when behavior, selectors, architecture, or conventions change.
 4. Commit when the task is done.
 5. **Push only when the user asks.** A finished commit is not a request to push.
 
@@ -26,6 +26,13 @@ We work one task at a time. The flow is:
 - Add a short body when the reason is not obvious. Explain the "why", not the diff.
 - Never commit secrets or local-only files: `.env`, tokens, API keys, browser profiles, Chrome extension signing keys (`.pem`, `.crx`), logs, `node_modules/`, or test scaffolding.
 - The repository is `main` only for now. Do not create release branches without being asked.
+
+### Documentation
+
+- `README.md` is the user guide. Any feature, setting, permission, setup step, or troubleshooting case a user should know about goes into `README.md` in the same commit as the change.
+- Keep the README in its existing voice: short, plain, practical. Explain what the feature does and how to use it. A short "What's new" section for the current release is fine; do not maintain a full changelog or write marketing copy.
+- `AGENTS.md` is for contributors. Update it when architecture, selectors, storage keys, or conventions change.
+- Internal-only changes (refactors, debug logging, selector hardening that does not change behavior) do not need a README entry, but `AGENTS.md` should reflect anything that affects maintenance.
 
 ### Pushing
 

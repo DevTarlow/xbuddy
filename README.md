@@ -4,13 +4,13 @@
 
 <h1 align="center">X Buddy</h1>
 
-<p align="center">Keyword highlights and AI reply drafts for X, powered by a model running on your own machine.</p>
+<p align="center">Keyword highlights, negative filtering, and AI reply drafts for X, powered by a model running on your own machine.</p>
 
 > **X Buddy is still under development.** It works, but it is rough around the edges and X changes their site a lot. Expect a broken selector now and then. If something stops working, open an issue and include what you see.
 
 ## What it does
 
-- **Keyword glow.** Add words you care about and matching posts in your timeline get a green glow. Useful when you want to spot a topic without reading every post.
+- **Keyword glow.** Add words you care about and matching posts in your timeline glow in the color you pick (green by default). Useful when you want to spot a topic without reading every post.
 - **Negative keywords.** Add words you never want to see and matching posts are hidden from the timeline. Turn the whole list off whenever you want it back.
 - **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting and negative filtering.
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
@@ -38,7 +38,7 @@ llama-server -m path/to/gemma-4-E4B-it-QAT-Q4_0.gguf --port 8080
 
 With LM Studio, start the local server on port `8080` and load the model there.
 
-If your server uses a different port or model name, edit `LLM_URL` / `LLM_MODEL` in `background.js` for now. A settings page is on the roadmap.
+If your server uses a different port or model name, edit `LLM_URL` / `LLM_MODEL` in `background.js` for now. The popup's **Settings** section covers keywords and backups; a proper LLM settings page is on the roadmap.
 
 ## Install
 
@@ -58,7 +58,7 @@ Pin the extension to your toolbar so the popup is easy to reach.
 
 1. Click the X Buddy icon
 2. Type a keyword and press **Add**
-3. Matching posts glow green as you scroll
+3. Matching posts glow in your chosen color as you scroll
 
 Posts already on the page update too, so you do not need to reload.
 
@@ -68,9 +68,11 @@ Posts already on the page update too, so you do not need to reload.
 2. Under **Negative Keywords**, type a word and press **Add**
 3. Posts matching that word disappear from the timeline
 
-The helper text under the section says it plainly: **Posts matching these keywords are hidden.** Remove the word, or flip the negative toggle off, and the posts come back. Positive and negative keywords both match whole words only, so `ai` will not match `rain`.
+The helper text under the section says it plainly: **Posts matching these keywords are hidden.** Negative filtering is on by default; an empty list hides nothing. Remove the word, or flip the negative toggle off, and the posts come back.
 
-Each list has its own search box, five-item pages, and a **Clear All** button. Keywords are capped at 100 characters and duplicates are rejected regardless of case.
+Both lists match whole words, case-insensitively, so `ai` will not match `rain`. Hashtag and punctuation keywords such as `#AI` and `C++` work too. Negative matching looks at the post body, not the author's name or handle.
+
+Each list has its own search box, five-item pages, and a **Clear All** button. Search is case-insensitive, Clear All asks before deleting, keywords are capped at 100 characters, and duplicates are rejected regardless of case.
 
 ### Pause everything
 
@@ -98,7 +100,7 @@ A full config restore replaces the current keyword lists, toggles, and glow colo
 2. Right-click and choose **Add "..." to Positive Keywords** or **Add "..." to Negative Keywords**
 3. A toast confirms the add, and the popup list updates
 
-Right-clicking a hashtag selects it for you. A leading `#` is stripped, so adding `#AI` stores `AI` and matches both hashtag and plain mentions.
+Right-clicking a hashtag selects it for you. A leading `#` is stripped, so adding `#AI` stores `AI` and matches both hashtag and plain mentions. If the word is already in that list, a toast says so instead of adding it twice.
 
 ### Draft a reply
 
@@ -116,11 +118,20 @@ The reply goes into the composer, not straight to X. You always get the final sa
 | `Failed — Failed to fetch` | Make sure your LLM server is running on port 8080. Then reload the extension in `chrome://extensions` and refresh x.com. |
 | `Background unavailable — reload the extension` | The extension was reloaded while the tab stayed open. Refresh x.com. |
 | Popup says **Offline** | The server is not reachable at `http://localhost:8080`. Start it, then reopen the popup. |
-| No green glow | Check that the keyword is in the positive list and the positive toggle is on. Keywords match whole words only, so `ai` will not match `rain`. |
+| No glow | Check that the keyword is in the positive list and the positive toggle is on. Keywords match whole words only, so `ai` will not match `rain`. If the glow is there but hard to see, open **Settings** and pick a brighter color. |
 | A post I want to read is hidden | Check the negative list and the negative toggle. A negative keyword wins over a positive glow. Remove the word, or turn negative filtering off, to bring the post back. |
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
+| Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1 configs, or older files with `positive` and/or `negative` arrays. |
+
+## What's new in 1.2.0
+
+- Negative keyword filtering, with a master switch and separate positive and negative toggles.
+- Search, five-item pages, and Clear All for both keyword lists.
+- A configurable glow color.
+- Export/import for keywords, toggles, and glow color.
+- Right-click capture for selections and hashtags.
 
 ## Status
 
@@ -135,7 +146,7 @@ X Buddy is an early build. What is done and what is next:
 - [x] Right-click keyword capture
 - [x] Magic Reply with a local model
 - [ ] Support X's new web layout
-- [ ] Settings page for the server URL and model
+- [ ] LLM settings page for the server URL and model
 - [ ] Chrome Web Store release
 
 X started testing a new web layout for logged-in users in late 2026. It removes most of the hooks this extension uses, so the classic layout is the supported one for now. If your X looks different and nothing shows up, that is why.
