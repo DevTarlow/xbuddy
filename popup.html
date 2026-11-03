@@ -467,7 +467,7 @@
 
     .collapsible-body {
       overflow: hidden;
-      max-height: 1200px;
+      max-height: 4000px;
       transition: max-height 0.3s ease;
     }
 
@@ -481,6 +481,82 @@
       letter-spacing: 0.5px;
       color: #6a6e79;
       margin-bottom: 8px;
+    }
+
+    .settings-subsection {
+      margin-bottom: 14px;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .field-row label {
+      font-size: 12px;
+      color: #8a8f9a;
+    }
+
+    .field-row input[type="number"] {
+      width: 92px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #2a2d35;
+      background: #1a1d23;
+      color: #e1e3e6;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .field-row input[type="number"]:focus {
+      border-color: #00ff41;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 10px 0 4px;
+      font-size: 12px;
+      color: #8a8f9a;
+      cursor: pointer;
+    }
+
+    .checkbox-row input {
+      margin-top: 2px;
+      accent-color: #00ff41;
+      flex-shrink: 0;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: none;
+      background: #00ff41;
+      color: #111318;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-primary:hover {
+      background: #00cc34;
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .section-hint.error {
+      color: #ff6b6b;
     }
 
     .input-row input[type="color"] {
@@ -617,6 +693,57 @@
         <span class="collapsible-arrow" id="settings-arrow">▶</span>
       </button>
       <div class="collapsible-body collapsed" id="settings-body">
+        <div class="settings-subsection" id="llm-settings-section">
+          <div class="settings-label" style="margin-top: 10px;">Local LLM:</div>
+          <div class="section-hint" style="margin-bottom: 8px;">Magic Reply uses an OpenAI-compatible server running on this machine.</div>
+
+          <div class="settings-label">Server URL:</div>
+          <div class="input-row" style="margin-bottom: 4px;">
+            <input type="text" id="llm-url-input" placeholder="http://localhost:8080"
+              spellcheck="false" autocapitalize="off" inputmode="url" aria-label="LLM server URL" />
+          </div>
+          <div class="section-hint" style="margin-bottom: 10px;">localhost or 127.0.0.1. Include the port; /v1 is added automatically.</div>
+
+          <div class="settings-label">API Key (optional):</div>
+          <div class="input-row" style="margin-bottom: 4px;">
+            <input type="password" id="llm-api-key-input" placeholder="Only if your server requires one"
+              autocomplete="off" spellcheck="false" aria-label="LLM API key" />
+          </div>
+          <div class="section-hint" style="margin-bottom: 10px;">Stored locally and never included in exports.</div>
+
+          <div class="settings-label">Model:</div>
+          <div class="input-row" style="margin-bottom: 4px;">
+            <input type="text" id="llm-model-input" list="llm-model-list" placeholder="Model name"
+              spellcheck="false" autocapitalize="off" aria-label="LLM model name" />
+            <button class="btn-outline" id="llm-fetch-models-btn" title="Fetch the model list from the server">Fetch Models</button>
+          </div>
+          <datalist id="llm-model-list"></datalist>
+          <div class="section-hint" id="llm-feedback" role="status" aria-live="polite"></div>
+
+          <div class="settings-label" style="margin-top: 12px;">Generation:</div>
+          <div class="field-row">
+            <label for="llm-temperature-input">Temperature (0–2)</label>
+            <input type="number" id="llm-temperature-input" min="0" max="2" step="0.1" inputmode="decimal" />
+          </div>
+          <div class="field-row">
+            <label for="llm-max-tokens-input">Max reply tokens</label>
+            <input type="number" id="llm-max-tokens-input" min="32" max="4096" step="1" inputmode="numeric" />
+          </div>
+          <div class="field-row">
+            <label for="llm-timeout-input">Timeout (seconds)</label>
+            <input type="number" id="llm-timeout-input" min="5" max="300" step="1" inputmode="numeric" />
+          </div>
+
+          <label class="checkbox-row" for="llm-disable-thinking">
+            <input type="checkbox" id="llm-disable-thinking" />
+            <span>Disable model thinking</span>
+          </label>
+          <div class="section-hint" style="margin-left: 22px; margin-bottom: 10px;">Faster replies on reasoning models. Turn off if your server rejects it.</div>
+
+          <button class="btn-primary" id="llm-save-btn">Save LLM Settings</button>
+          <hr class="separator" />
+        </div>
+
         <div class="settings-label" style="margin-top: 10px;">Glow Color:</div>
         <div class="input-row" style="margin-bottom: 4px;">
           <input type="color" id="glow-color-input" value="#00ff41" aria-label="Glow color" />

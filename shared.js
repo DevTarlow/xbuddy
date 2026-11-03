@@ -1,9 +1,119 @@
-// ===== X Buddy — Shared Tone Presets =====
+// ===== X Buddy — Shared Tone Presets and LLM Defaults =====
 // Tone IDs and prompt keys are stable: stored prompts and exported configs use
 // them. Keep this list mirrored by the popup selector and the Magic Reply menu.
 
 const TONE_PROMPT_PREFIX = 'xbBuddyTonePrompt_';
 const DEFAULT_TONE_ID = 'generic';
+
+// ===== Local LLM settings =====
+// The service worker resolves these per request, so changes apply without an
+// extension reload. Keep the API key out of exports and logs.
+const LLM_SETTINGS_KEY = 'xbBuddyLlmSettings';
+
+const LLM_DEFAULTS = Object.freeze({
+  baseUrl: 'http://localhost:8080',
+  model: 'gemma-4-E4B-it-QAT-Q4_0.gguf',
+  temperature: 0.7,
+  maxTokens: 250,
+  timeoutSeconds: 60,
+  disableThinking: true,
+  apiKey: '',
+});
+
+const LLM_LIMITS = Object.freeze({
+  temperatureMin: 0,
+  temperatureMax: 2,
+  maxTokensMin: 32,
+  maxTokensMax: 4096,
+  timeoutSecondsMin: 5,
+  timeoutSecondsMax: 300,
+  modelMaxLength: 200,
+  apiKeyMaxLength: 500,
+});
+
+// Accept a base URL or a full OpenAI endpoint, with or without a scheme.
+// Only loopback hosts are allowed so posts stay on this machine.
+function normalizeLlmBaseUrl(raw) {
+  if (typeof raw !== 'string') return '';
+  let value = raw.trim();
+  if (!value) return '';
+
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+    value = `http://${value}`;
+  }
+
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return '';
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+  if (url.username || url.password) return '';
+  if (!url.hostname) return '';
+
+  const host = url.hostname.toLowerCase();
+  if (host !== 'localhost' && host !== '127.0.0.1') return '';
+
+  const path = url.pathname.replace(/\/+$/, '');
+  const basePath = path.replace(/\/(?:v1\/chat\/completions|v1\/models|v1)$/i, '');
+  return `${url.protocol}//${url.host}${basePath}`;
+}
+
+function clampLlmNumber(value, fallback, min, max) {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+}
+
+function normalizeLlmSettings(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const baseUrl = normalizeLlmBaseUrl(src.baseUrl) || LLM_DEFAULTS.baseUrl;
+
+  const model = typeof src.model === 'string' && src.model.trim()
+    ? src.model.trim().slice(0, LLM_LIMITS.modelMaxLength)
+    : LLM_DEFAULTS.model;
+
+  const temperature = Math.round(clampLlmNumber(
+    src.temperature,
+    LLM_DEFAULTS.temperature,
+    LLM_LIMITS.temperatureMin,
+    LLM_LIMITS.temperatureMax
+  ) * 100) / 100;
+
+  const maxTokens = Math.round(clampLlmNumber(
+    src.maxTokens,
+    LLM_DEFAULTS.maxTokens,
+    LLM_LIMITS.maxTokensMin,
+    LLM_LIMITS.maxTokensMax
+  ));
+
+  const timeoutSeconds = Math.round(clampLlmNumber(
+    src.timeoutSeconds,
+    LLM_DEFAULTS.timeoutSeconds,
+    LLM_LIMITS.timeoutSecondsMin,
+    LLM_LIMITS.timeoutSecondsMax
+  ));
+
+  const disableThinking = typeof src.disableThinking === 'boolean'
+    ? src.disableThinking
+    : LLM_DEFAULTS.disableThinking;
+
+  const apiKey = typeof src.apiKey === 'string'
+    ? src.apiKey.trim().slice(0, LLM_LIMITS.apiKeyMaxLength)
+    : '';
+
+  return {
+    baseUrl,
+    model,
+    temperature,
+    maxTokens,
+    timeoutSeconds,
+    disableThinking,
+    apiKey,
+  };
+}
 
 const TONES = [
   {

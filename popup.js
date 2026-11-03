@@ -47,6 +47,17 @@ const settingsArrow = document.getElementById('settings-arrow');
 const settingsBody = document.getElementById('settings-body');
 const glowColorInput = document.getElementById('glow-color-input');
 const saveGlowColorBtn = document.getElementById('save-glow-color-btn');
+const llmUrlInput = document.getElementById('llm-url-input');
+const llmApiKeyInput = document.getElementById('llm-api-key-input');
+const llmModelInput = document.getElementById('llm-model-input');
+const llmModelListEl = document.getElementById('llm-model-list');
+const llmFetchModelsBtn = document.getElementById('llm-fetch-models-btn');
+const llmTemperatureInput = document.getElementById('llm-temperature-input');
+const llmMaxTokensInput = document.getElementById('llm-max-tokens-input');
+const llmTimeoutInput = document.getElementById('llm-timeout-input');
+const llmDisableThinking = document.getElementById('llm-disable-thinking');
+const llmFeedback = document.getElementById('llm-feedback');
+const saveLlmBtn = document.getElementById('llm-save-btn');
 const toneSelect = document.getElementById('tone-select');
 const tonePromptLabel = document.getElementById('tone-prompt-label');
 const tonePromptInput = document.getElementById('tone-prompt-input');
@@ -70,6 +81,7 @@ let positiveSearchQuery = '';
 let negativeSearchQuery = '';
 let glowColor = DEFAULT_GLOW_COLOR;
 let settingsOpen = false;
+let llmSettings = { ...LLM_DEFAULTS };
 let tonePrompts = {};
 let currentToneId = DEFAULT_TONE_ID;
 let toastTimer = null;
@@ -163,6 +175,165 @@ async function loadTonePrompts() {
   }
 }
 
+// --- Local LLM settings ---
+function setLlmFeedback(message, isError = false) {
+  llmFeedback.textContent = message || '';
+  llmFeedback.classList.toggle('error', Boolean(message) && isError);
+}
+
+function populateLlmModels(models) {
+  llmModelListEl.innerHTML = '';
+  for (const model of models.slice(0, 200)) {
+    const option = document.createElement('option');
+    option.value = model;
+    llmModelListEl.appendChild(option);
+  }
+}
+
+function applyLlmSettingsToForm() {
+  llmUrlInput.value = llmSettings.baseUrl;
+  llmApiKeyInput.value = llmSettings.apiKey;
+  llmModelInput.value = llmSettings.model;
+  llmTemperatureInput.value = String(llmSettings.temperature);
+  llmMaxTokensInput.value = String(llmSettings.maxTokens);
+  llmTimeoutInput.value = String(llmSettings.timeoutSeconds);
+  llmDisableThinking.checked = llmSettings.disableThinking;
+}
+
+function readClampedNumber(input, min, max) {
+  const raw = input.value.trim();
+  if (!raw) return null;
+  const num = Number(raw);
+  if (!Number.isFinite(num)) return null;
+  return Math.min(max, Math.max(min, num));
+}
+
+async function saveLlmSettings() {
+  const baseUrl = normalizeLlmBaseUrl(llmUrlInput.value);
+  if (!baseUrl) {
+    flashSaveFeedback(saveLlmBtn, 'Invalid URL');
+    setLlmFeedback('Use a localhost or 127.0.0.1 URL', true);
+    llmUrlInput.focus();
+    return;
+  }
+
+  const model = llmModelInput.value.trim();
+  if (!model) {
+    flashSaveFeedback(saveLlmBtn, 'Model required');
+    setLlmFeedback('Enter a model name', true);
+    llmModelInput.focus();
+    return;
+  }
+  if (model.length > LLM_LIMITS.modelMaxLength) {
+    flashSaveFeedback(saveLlmBtn, 'Model too long');
+    setLlmFeedback(`Model names are capped at ${LLM_LIMITS.modelMaxLength} characters`, true);
+    llmModelInput.focus();
+    return;
+  }
+
+  const apiKey = llmApiKeyInput.value.trim();
+  if (apiKey.length > LLM_LIMITS.apiKeyMaxLength) {
+    flashSaveFeedback(saveLlmBtn, 'Key too long');
+    setLlmFeedback(`API keys are capped at ${LLM_LIMITS.apiKeyMaxLength} characters`, true);
+    llmApiKeyInput.focus();
+    return;
+  }
+
+  const temperature = readClampedNumber(
+    llmTemperatureInput, LLM_LIMITS.temperatureMin, LLM_LIMITS.temperatureMax
+  );
+  if (temperature === null) {
+    flashSaveFeedback(saveLlmBtn, 'Invalid temperature');
+    setLlmFeedback('Temperature must be a number from 0 to 2', true);
+    llmTemperatureInput.focus();
+    return;
+  }
+
+  const maxTokens = readClampedNumber(
+    llmMaxTokensInput, LLM_LIMITS.maxTokensMin, LLM_LIMITS.maxTokensMax
+  );
+  if (maxTokens === null) {
+    flashSaveFeedback(saveLlmBtn, 'Invalid tokens');
+    setLlmFeedback('Max reply tokens must be a number', true);
+    llmMaxTokensInput.focus();
+    return;
+  }
+
+  const timeoutSeconds = readClampedNumber(
+    llmTimeoutInput, LLM_LIMITS.timeoutSecondsMin, LLM_LIMITS.timeoutSecondsMax
+  );
+  if (timeoutSeconds === null) {
+    flashSaveFeedback(saveLlmBtn, 'Invalid timeout');
+    setLlmFeedback('Timeout must be a number', true);
+    llmTimeoutInput.focus();
+    return;
+  }
+
+  const next = {
+    baseUrl,
+    model,
+    temperature: Math.round(temperature * 100) / 100,
+    maxTokens: Math.round(maxTokens),
+    timeoutSeconds: Math.round(timeoutSeconds),
+    disableThinking: llmDisableThinking.checked,
+    apiKey,
+  };
+
+  if (!(await saveFlag(LLM_SETTINGS_KEY, next))) return;
+
+  llmSettings = next;
+  applyLlmSettingsToForm();
+  setLlmFeedback('');
+  flashSaveFeedback(saveLlmBtn, 'Saved ✓');
+  checkLlmStatus();
+}
+
+async function fetchLlmModels() {
+  const baseUrl = normalizeLlmBaseUrl(llmUrlInput.value);
+  if (!baseUrl) {
+    setLlmFeedback('Use a localhost or 127.0.0.1 URL', true);
+    llmUrlInput.focus();
+    return;
+  }
+
+  const apiKey = llmApiKeyInput.value.trim();
+  const originalText = llmFetchModelsBtn.textContent;
+  llmFetchModelsBtn.disabled = true;
+  llmFetchModelsBtn.textContent = 'Loading…';
+  setLlmFeedback('Fetching models…');
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'xb:llm-models',
+      baseUrl,
+      apiKey,
+    });
+
+    if (!response || !response.ok) {
+      throw new Error(response?.error || 'Could not fetch models');
+    }
+
+    const models = Array.isArray(response.models) ? response.models : [];
+    llmUrlInput.value = baseUrl;
+    populateLlmModels(models);
+
+    if (models.length === 0) {
+      setLlmFeedback('Server returned no models — type the name manually');
+    } else {
+      setLlmFeedback(`Found ${models.length} model${models.length === 1 ? '' : 's'}`);
+    }
+  } catch (err) {
+    console.error('[X Buddy] Failed to fetch models:', err);
+    const message = /Receiving end does not exist|message port closed/i.test(err?.message || '')
+      ? 'Reload the extension and try again'
+      : (err?.message || 'Could not fetch models');
+    setLlmFeedback(message, true);
+  } finally {
+    llmFetchModelsBtn.disabled = false;
+    llmFetchModelsBtn.textContent = originalText;
+  }
+}
+
 // --- Storage helpers ---
 async function loadState() {
   try {
@@ -174,6 +345,7 @@ async function loadState() {
       NEGATIVE_ENABLED_KEY,
       GLOW_KEY,
       SETTINGS_OPEN_KEY,
+      LLM_SETTINGS_KEY,
     ]);
     keywords = normalizeKeywords(result[STORAGE_KEY] || []);
     negativeKeywords = normalizeKeywords(result[NEGATIVE_STORAGE_KEY] || []);
@@ -182,6 +354,7 @@ async function loadState() {
     negativeEnabled = result[NEGATIVE_ENABLED_KEY] !== false;
     glowColor = isValidHexColor(result[GLOW_KEY]) ? result[GLOW_KEY] : DEFAULT_GLOW_COLOR;
     settingsOpen = result[SETTINGS_OPEN_KEY] === true;
+    llmSettings = normalizeLlmSettings(result[LLM_SETTINGS_KEY]);
   } catch (e) {
     console.error('[X Buddy] Failed to load settings:', e);
     showToast('Failed to load settings', 'error');
@@ -383,7 +556,7 @@ function prepareImportedKeywords(arr) {
 function buildConfig() {
   return {
     app: 'xbuddy',
-    version: 1,
+    version: 2,
     positive: keywords,
     negative: negativeKeywords,
     positiveEnabled,
@@ -391,6 +564,14 @@ function buildConfig() {
     enabled,
     glowColor,
     tonePrompts: { ...tonePrompts },
+    llm: {
+      baseUrl: llmSettings.baseUrl,
+      model: llmSettings.model,
+      temperature: llmSettings.temperature,
+      maxTokens: llmSettings.maxTokens,
+      timeoutSeconds: llmSettings.timeoutSeconds,
+      disableThinking: llmSettings.disableThinking,
+    },
   };
 }
 
@@ -412,6 +593,8 @@ function refreshFromState() {
   positiveToggle.checked = positiveEnabled;
   negativeToggle.checked = negativeEnabled;
   glowColorInput.value = glowColor;
+  applyLlmSettingsToForm();
+  setLlmFeedback('');
 
   positiveSearch.value = '';
   positiveSearchQuery = '';
@@ -428,6 +611,67 @@ function refreshFromState() {
   renderKeywords();
   renderNegativeKeywords();
   updateToneEditor();
+}
+
+function importedLlmNumber(value, min, max) {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return Math.min(max, Math.max(min, num));
+}
+
+function applyImportedLlmSettings(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const next = { ...llmSettings };
+  let changed = false;
+
+  const baseUrl = normalizeLlmBaseUrl(raw.baseUrl);
+  if (baseUrl) {
+    next.baseUrl = baseUrl;
+    changed = true;
+  }
+
+  if (typeof raw.model === 'string') {
+    const model = raw.model.trim();
+    if (model && model.length <= LLM_LIMITS.modelMaxLength) {
+      next.model = model;
+      changed = true;
+    }
+  }
+
+  const temperature = importedLlmNumber(
+    raw.temperature, LLM_LIMITS.temperatureMin, LLM_LIMITS.temperatureMax
+  );
+  if (temperature !== null) {
+    next.temperature = Math.round(temperature * 100) / 100;
+    changed = true;
+  }
+
+  const maxTokens = importedLlmNumber(
+    raw.maxTokens, LLM_LIMITS.maxTokensMin, LLM_LIMITS.maxTokensMax
+  );
+  if (maxTokens !== null) {
+    next.maxTokens = Math.round(maxTokens);
+    changed = true;
+  }
+
+  const timeoutSeconds = importedLlmNumber(
+    raw.timeoutSeconds, LLM_LIMITS.timeoutSecondsMin, LLM_LIMITS.timeoutSecondsMax
+  );
+  if (timeoutSeconds !== null) {
+    next.timeoutSeconds = Math.round(timeoutSeconds);
+    changed = true;
+  }
+
+  if (typeof raw.disableThinking === 'boolean') {
+    next.disableThinking = raw.disableThinking;
+    changed = true;
+  }
+
+  // API keys are local-only and never imported from a config file.
+  return changed ? next : null;
 }
 
 async function importFullConfig(data) {
@@ -450,6 +694,10 @@ async function importFullConfig(data) {
         toSet[TONE_PROMPT_PREFIX + tone.id] = prompt;
       }
     }
+  }
+  if (data.llm && typeof data.llm === 'object') {
+    const nextLlm = applyImportedLlmSettings(data.llm);
+    if (nextLlm) toSet[LLM_SETTINGS_KEY] = nextLlm;
   }
 
   if (Object.keys(toSet).length === 0) {
@@ -481,10 +729,12 @@ async function importFullConfig(data) {
       }
     }
   }
+  if (toSet[LLM_SETTINGS_KEY]) llmSettings = { ...toSet[LLM_SETTINGS_KEY] };
 
   refreshFromState();
   flashSaveFeedback(importBtn, 'Imported ✓');
   showToast('Config imported');
+  checkLlmStatus();
 }
 
 async function importLegacy(data) {
@@ -599,6 +849,9 @@ function applySettingsState() {
 
 // --- LLM connection check ---
 async function checkLlmStatus() {
+  llmDot.className = 'dot';
+  llmLabel.textContent = 'Checking…';
+
   try {
     // Route the health check through the same background path Magic Reply uses,
     // so the popup cannot report "Connected" while replies are blocked.
@@ -774,6 +1027,9 @@ saveGlowColorBtn.addEventListener('click', async () => {
   }
 });
 
+saveLlmBtn.addEventListener('click', saveLlmSettings);
+llmFetchModelsBtn.addEventListener('click', fetchLlmModels);
+
 toneSelect.addEventListener('change', () => {
   currentToneId = toneSelect.value;
   updateToneEditor();
@@ -815,6 +1071,7 @@ importInput.addEventListener('change', handleImportFile);
   positiveToggle.checked = positiveEnabled;
   negativeToggle.checked = negativeEnabled;
   glowColorInput.value = glowColor;
+  applyLlmSettingsToForm();
   applyMasterState();
   applyPositiveState();
   applyNegativeState();

@@ -21,16 +21,17 @@
 - **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting and negative filtering.
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
-- **Backup.** Export keywords, toggles, glow color, and tone prompts to a JSON file, and import them on another browser.
+- **Backup.** Export keywords, toggles, glow color, tone prompts, and LLM settings to a JSON file, and import them on another browser.
 - **Right-click capture.** Select a word or hashtag on X and add it to either list from the context menu, with a toast confirming the add.
 - **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt. You can edit the draft before posting.
-- **Stays local.** No accounts, no API keys, no tracking. Your keywords and posts go to the model on your computer and nowhere else.
+- **Local LLM settings.** Point Magic Reply at any OpenAI-compatible server on `localhost` or `127.0.0.1`, choose the model, and tune temperature, reply length, timeout, and thinking. An optional API key is supported.
+- **Stays local.** No accounts and no tracking. Most local servers need no API key; if yours does, it stays in Chrome's local storage. Your keywords and posts go to the model on your computer and nowhere else.
 
 ## What you need
 
 - Chrome or another Chromium browser (tested on Chrome 156)
-- A local OpenAI-compatible server running at `http://localhost:8080`
-- A model the server can load. The extension is built and tuned around `gemma-4-E4B-it-QAT-Q4_0.gguf`, but other chat models should work.
+- A local OpenAI-compatible server. The default is `http://localhost:8080`, but you can set the URL and port in **Settings → Local LLM**.
+- A model the server can load. The extension defaults to `gemma-4-E4B-it-QAT-Q4_0.gguf` and is tuned around it, but other chat models should work. Choose the model in Settings.
 
 The model is not bundled. You need to run the server yourself.
 
@@ -42,9 +43,11 @@ With llama.cpp:
 llama-server -m path/to/gemma-4-E4B-it-QAT-Q4_0.gguf --port 8080
 ```
 
-With LM Studio, start the local server on port `8080` and load the model there.
+With LM Studio, start the local server and load the model there. Use the port LM Studio shows (usually `1234`) as the Server URL.
 
-If your server uses a different port or model name, edit `LLM_URL` / `LLM_MODEL` in `background.js` for now. The popup's **Settings** section covers keywords, reply tones, and backups; a proper LLM settings page is on the roadmap.
+With Ollama, run `ollama serve` and use `http://localhost:11434` as the Server URL.
+
+The server must be on `localhost` or `127.0.0.1`. Remote and LAN endpoints are not supported yet.
 
 ## Install
 
@@ -98,7 +101,7 @@ Matching posts use the new color immediately, and the choice survives reloads.
 2. Click **Export All** to download `xbuddy-config.json`
 3. On another browser, click **Import** and pick that file
 
-A full config restore replaces the current keyword lists, toggles, glow color, and tone prompts. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
+A full config restore replaces the current keyword lists, toggles, glow color, tone prompts, and non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
 
 ### Add a keyword from the page
 
@@ -107,6 +110,19 @@ A full config restore replaces the current keyword lists, toggles, glow color, a
 3. A toast confirms the add, and the popup list updates
 
 Right-clicking a hashtag selects it for you. A leading `#` is stripped, so adding `#AI` stores `AI` and matches both hashtag and plain mentions. If the word is already in that list, a toast says so instead of adding it twice.
+
+### Configure your local LLM
+
+1. Click the X Buddy icon and expand **Settings**
+2. Under **Local LLM**, enter the **Server URL** (for example `http://localhost:8080` or `http://localhost:11434`)
+3. Click **Fetch Models** and choose a model, or type the model name yourself
+4. Add an **API Key** only if your server requires one
+5. Adjust **Temperature**, **Max reply tokens**, **Timeout**, and **Disable model thinking** as needed
+6. Click **Save LLM Settings**
+
+The status dot next to the title shows whether the saved server is reachable. Magic Reply uses the saved settings immediately; you do not need to reload the extension or x.com.
+
+The Server URL must be `localhost` or `127.0.0.1`. Include the port; the extension adds `/v1` for you. If your server does not expose `/v1/models`, **Fetch Models** will fail, but you can still type the model name and save. The API key is stored in Chrome's local storage and is never included in exports.
 
 ### Draft a reply
 
@@ -131,22 +147,28 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 
 | What you see | What to try |
 |---|---|
-| `Failed — Failed to fetch` | Make sure your LLM server is running on port 8080. Then reload the extension in `chrome://extensions` and refresh x.com. |
+| `Failed — Could not reach LLM server at ...` | Make sure your LLM server is running and **Settings → Local LLM** points at the right URL and port. Then reload the extension in `chrome://extensions` and refresh x.com. |
 | `Background unavailable — reload the extension` | The extension was reloaded while the tab stayed open. Refresh x.com. |
-| Popup says **Offline** | The server is not reachable at `http://localhost:8080`. Start it, then reopen the popup. |
+| Popup says **Offline** | The server is not reachable at the saved Server URL. Start it, check the URL and port in **Settings → Local LLM**, then reopen the popup. If Magic Reply still works, your server may not expose `/v1/models`, which the status check uses. |
+| `Failed — LLM server rejected the API key` | Check the API key in **Settings → Local LLM**, or clear it if your server does not use one. |
+| `Failed — LLM endpoint or model not found` | Check the Server URL and model name. Click **Fetch Models** to see what the server offers, or type the model name manually. |
+| `Failed — LLM request timed out ...` | Increase **Timeout (seconds)** in **Settings → Local LLM**, or use a smaller model. |
+| **Fetch Models** fails | Not every server exposes `/v1/models`. Check the URL, or type the exact model name and click **Save LLM Settings** anyway. |
 | No glow | Check that the keyword is in the positive list and the positive toggle is on. Keywords match whole words only, so `ai` will not match `rain`. If the glow is there but hard to see, open **Settings** and pick a brighter color. |
 | A post I want to read is hidden | Check the negative list and the negative toggle. A negative keyword wins over a positive glow. Remove the word, or turn negative filtering off, to bring the post back. |
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
 | Tone menu does not open | Reload the extension at `chrome://extensions` and refresh x.com. The menu is injected next to the reply send button on the classic layout. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
-| Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1 configs, or older files with `positive` and/or `negative` arrays. |
+| Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1 and 2 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.3.0
+## What's new in 1.4.0
 
-- Magic Reply now offers five tones: Generic, Agree, Disagree, Funny, and Informative.
-- Each tone has its own editable prompt in **Settings → Reply Tones**, plus a Restore Default button.
-- Tone prompts are included in Export All / Import.
+- **Settings → Local LLM** lets you set the server URL, model, and optional API key.
+- **Fetch Models** lists the models your server exposes, and you can still type a model name manually.
+- Temperature, max reply tokens, timeout, and a thinking/reasoning toggle are now configurable.
+- LLM settings are included in Export All / Import, except the API key.
+- The default remains `http://localhost:8080` with `gemma-4-E4B-it-QAT-Q4_0.gguf`.
 
 ## Status
 
@@ -161,8 +183,8 @@ X Buddy is an early build. What is done and what is next:
 - [x] Right-click keyword capture
 - [x] Magic Reply with a local model
 - [x] Five reply tones with editable prompts
+- [x] LLM settings for the server URL, model, and generation options
 - [ ] Support X's new web layout
-- [ ] LLM settings page for the server URL and model
 - [ ] Chrome Web Store release
 
 X started testing a new web layout for logged-in users in late 2026. It removes most of the hooks this extension uses, so the classic layout is the supported one for now. If your X looks different and nothing shows up, that is why.
@@ -170,8 +192,8 @@ X started testing a new web layout for logged-in users in late 2026. It removes 
 ## Privacy
 
 - The extension asks for `storage` so it can remember your keywords, and `contextMenus` so you can right-click text to add it to a list.
-- It can talk to `x.com`, `twitter.com`, and `localhost:8080`. That is it.
-- Your keyword list and tone prompts live in Chrome's local storage.
+- It can talk to `x.com`, `twitter.com`, and the local LLM server you configure (`localhost` or `127.0.0.1` only). That is it.
+- Your keyword list, tone prompts, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports.
 - Posts are sent to your own model server. Nothing is sent to us, and there is no analytics or remote code.
 
 ## Contributing

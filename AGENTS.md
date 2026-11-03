@@ -64,17 +64,22 @@ There is no automated test suite. Before committing a behavior change, check:
 - Editing a tone prompt in Settings changes the generated reply; Restore Default resets it.
 - Magic Reply fills the composer, the send button enables, and an existing draft is replaced rather than appended.
 - The popup shows the real LLM status.
+- Settings → Local LLM shows the defaults, and URL/model/generation values persist after reopening the popup.
+- Fetch Models lists the server's models, and Magic Reply uses the saved endpoint/model.
+- An unreachable URL shows Offline and a clear Magic Reply failure; restoring it recovers.
+- Export omits the API key and import restores the other LLM settings; a version 1 config still imports.
+- Invalid LLM URL or number input shows feedback and does not save.
 - No new errors in the x.com console or the service worker console.
 
 ## Architecture
 
 ```
 manifest.json          — MV3 manifest
-shared.js              — Shared reply-tone presets and default prompts
+shared.js              — Shared reply-tone presets, LLM defaults, and LLM settings normalization
 popup.html             — Popup UI (340px, dark theme)
-popup.js               — Popup logic: keyword CRUD, toggles, tone editor, LLM status
+popup.js               — Popup logic: keyword CRUD, toggles, tone editor, LLM settings/status
 content.js             — Content script: keyword glow/filter, Magic Reply tone menu
-background.js          — Service worker: local LLM request + health check, tone prompt lookup, right-click menus
+background.js          — Service worker: settings-aware local LLM requests, tone prompt lookup, right-click menus
 styles.css             — Content script styles (glow + hidden post + Magic Reply + tone menu)
 icons/                 — Extension icons (16, 48, 128 PNG)
 ```
@@ -92,6 +97,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 | `xbBuddyNegativeEnabled` | `boolean` | `true` | Negative filtering on/off |
 | `xbBuddyGlowColor` | `string` | `#00ff41` | Highlight color (`#rrggbb`) |
 | `xbBuddyTonePrompt_<id>` | `string` | `TONES[*].defaultPrompt` | Per-tone Magic Reply system prompt (`generic`, `agree`, `disagree`, `funny`, `informative`) |
+| `xbBuddyLlmSettings` | `object` | `LLM_DEFAULTS` | Local LLM base URL, model, temperature, max tokens, timeout, thinking toggle, and optional API key |
 | `xbBuddySettingsOpen` | `boolean` | `false` | Popup Settings section open state |
 | `xbBuddyNotification` | `object` | absent | Transient context-menu toast (`keyword`, `listType`, `duplicate`, or `error`) |
 
@@ -100,7 +106,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 - Use `const` / `let`, never `var`
 - Async functions where storage/network is involved
 - `DEBUG` flag in `content.js` toggles verbose console logging
-- `shared.js` loads before `content.js` and `popup.js`, and via `importScripts('shared.js')` in the service worker. Tone IDs are stable: stored prompts and exported configs use them.
+- `shared.js` loads before `content.js` and `popup.js`, and via `importScripts('shared.js')` in the service worker. Tone IDs are stable: stored prompts and exported configs use them. LLM defaults, limits, and URL/settings normalization also live here so the popup and service worker cannot drift.
 - Error states surface via `console.error` + `showToast()` in popup
 - DOM dedup uses `WeakSet` + `data-xb-processed` / `data-magic-reply` attributes. The markers are verified against the live button before skipping, because X's React re-renders can remove injected nodes.
 - Classic-UI DOM queries use `data-testid` selectors matching X's DOM conventions
@@ -115,14 +121,14 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 - **Tone menu**: a fixed-position `div.magic-reply-dropdown` is appended to `document.body` with one button per tone. It closes on selection, outside click, or Escape, repositions on scroll/resize, flips above the trigger near the viewport bottom, and is removed when the master toggle pauses.
 - **Inline composer edge case**: On tweet detail pages, the composer is inline (not in a dialog). The tweet text lives ABOVE the composer in the DOM — `findTweetTextBefore()` picks the last `[data-testid="tweetText"]` that precedes the composer. The button is only injected on reply surfaces (`/status/`, `/compose/post`, or `in_reply_to=`), not the home timeline's "Post" box.
 - **Text insertion**: X's composer is Draft.js, whose DOM is owned by React. `insertTextIntoReply()` dispatches a synthetic `paste` event (after focusing and selecting the draft) so Draft updates its own `EditorState` and enables the Reply button. Do NOT use `textContent`/`execCommand` on the Draft DOM — it desyncs React and throws `removeChild is not a child of this node`.
-- **LLM**: OpenAI-compatible endpoint at `http://localhost:8080` (model `gemma-4-E4B-it-QAT-Q4_0.gguf`), called from `background.js`. Content-script requests to loopback are blocked by Chrome's Local Network Access policy; the service worker has the `localhost` host permission and is allowed. Response parsing handles `message.content`, `delta.content`, `reasoning_content`, and fallback fields. `chat_template_kwargs.enable_thinking = false` disables Gemma's reasoning tokens (~10x faster replies).
+- **LLM**: `shared.js` defines `LLM_DEFAULTS`, `LLM_LIMITS`, `normalizeLlmBaseUrl()`, and `normalizeLlmSettings()`. The popup writes `xbBuddyLlmSettings`; `background.js` resolves and normalizes it on every request, so changes apply without a reload. Requests go to `${baseUrl}/v1/chat/completions`; model discovery uses `${baseUrl}/v1/models`. Only `localhost` and `127.0.0.1` URLs are accepted. Content-script requests to loopback are blocked by Chrome's Local Network Access policy; the service worker has the loopback host permission and is allowed. Response parsing handles `message.content`, `delta.content`, `reasoning_content`, and fallback fields. `chat_template_kwargs.enable_thinking = false` is sent only when the Disable model thinking setting is on (~10x faster replies on Gemma). The optional API key is sent as a Bearer token, kept in local storage, and excluded from exports.
 - **Keyword changes**: `resetPostProcessing()` clears `data-xb-processed`, `.xb-glow-post`, and `.xb-hidden-post` before a rescan, so newly added keywords apply to already-rendered posts and removed keywords stop glowing or hiding. Changes are debounced through `scheduleReprocess()`.
 - **Master toggle**: `disableExtension()` stops the observer and safety checks, clears every injected class/marker, closes the tone menu, and removes Magic Reply wrappers. `enableExtension()` reloads settings and rescans. All scan functions are guarded by `enabled`.
 - **Popup lists**: five items per page, case-insensitive search, Clear All behind `confirm()`, and a 100-character limit. Duplicate or over-long adds flash feedback on the Add button; successful adds, clears, and toggle changes use the popup toast (`showToast(msg, 'error')` for failures).
 - **Glow color**: `applyGlowColor()` converts the stored `#rrggbb` value into `--xb-glow-rgb` on `document.documentElement`. The CSS uses `rgba(var(--xb-glow-rgb, 0, 255, 65), …)`, so existing glowing posts recolor immediately without a rescan. Invalid values fall back to `#00ff41`.
-- **Export/import**: version 1 configs are marked `app: 'xbuddy'` and carry both lists, all toggles, glow color, and `tonePrompts`. A versioned import replaces the present keys in one `chrome.storage.local.set`; legacy files containing only `positive`/`negative` arrays merge additively. Other app markers, invalid JSON, and over-100-character keywords are rejected or skipped.
+- **Export/import**: version 2 configs are marked `app: 'xbuddy'` and carry both lists, all toggles, glow color, `tonePrompts`, and a non-secret `llm` object (base URL, model, temperature, max tokens, timeout, thinking toggle). The API key is never exported or imported. A versioned import replaces the present keys in one `chrome.storage.local.set`; version 1 files still import, and legacy files containing only `positive`/`negative` arrays merge additively. Other app markers, invalid JSON, and over-100-character keywords are rejected or skipped.
 - **Context menus**: `background.js` creates positive/negative selection menus for x.com and twitter.com on install/startup. The click handler trims/collapses whitespace, strips leading `#`, rejects over-100 values, dedupes case-insensitively, and writes the list plus `xbBuddyNotification` in one `set`. The content script shows `showPageToast()` and clears the notification key; a pending notification is also consumed on page load.
-- **Security**: CSP in manifest restricts to `script-src 'self'`. Only `storage` and `contextMenus` permissions are declared, plus host permissions for x.com/twitter.com and `localhost:8080`.
+- **Security**: CSP in manifest restricts to `script-src 'self'`. Only `storage` and `contextMenus` permissions are declared, plus host permissions for x.com/twitter.com and loopback (`http(s)://localhost/*`, `http(s)://127.0.0.1/*`, any port). LLM requests are restricted to loopback, and the optional API key stays in local storage and out of exports.
 - **Error boundary**: Global `error` and `unhandledrejection` listeners catch + log exceptions.
 
 ### Key Selectors
@@ -162,5 +168,6 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`:
 - **Change a default tone prompt**: Edit the matching `defaultPrompt` in `TONES` in `shared.js`. Saved prompts override the default until the user clicks Restore Default.
 - **Add a reply tone**: Add an entry to `TONES` in `shared.js`. The popup selector, tone editor, Magic Reply menu, and background all read from that array; no other list to update.
 - **Change tone menu labels**: Edit the `label` fields in `TONES` in `shared.js`.
-- **Change LLM endpoint/model**: Update `LLM_URL` / `LLM_MODELS_URL` / `LLM_MODEL` in `background.js`
+- **Change default LLM endpoint/model**: Edit `LLM_DEFAULTS` in `shared.js`; users override the URL and model in Settings.
+- **Change LLM validation limits**: Edit `LLM_LIMITS` in `shared.js`; the popup and background both read them.
 - **Add permission**: Edit `permissions` / `host_permissions` in `manifest.json`

@@ -14,10 +14,60 @@ const MENU_POSITIVE = 'xb-add-positive';
 const MENU_NEGATIVE = 'xb-add-negative';
 const MAX_KEYWORD_LENGTH = 100;
 
-const LLM_URL = 'http://localhost:8080/v1/chat/completions';
-const LLM_MODELS_URL = 'http://localhost:8080/v1/models';
-const LLM_MODEL = 'gemma-4-E4B-it-QAT-Q4_0.gguf';
-const REQUEST_TIMEOUT_MS = 60000;
+const LLM_STATUS_TIMEOUT_MS = 4000;
+const LLM_MODELS_TIMEOUT_MS = 10000;
+
+async function resolveLlmSettings(overrides) {
+  let stored = {};
+  try {
+    const result = await chrome.storage.local.get(LLM_SETTINGS_KEY);
+    stored = result[LLM_SETTINGS_KEY];
+  } catch (err) {
+    console.warn('[X Buddy] Could not load LLM settings:', err);
+  }
+
+  const merged = stored && typeof stored === 'object' ? { ...stored } : {};
+  if (overrides && typeof overrides === 'object') {
+    for (const key of [
+      'baseUrl', 'model', 'temperature', 'maxTokens',
+      'timeoutSeconds', 'disableThinking', 'apiKey',
+    ]) {
+      if (overrides[key] !== undefined) merged[key] = overrides[key];
+    }
+  }
+
+  return normalizeLlmSettings(merged);
+}
+
+function llmHeaders(settings, withContentType = false) {
+  const headers = {};
+  if (withContentType) headers['Content-Type'] = 'application/json';
+  if (settings.apiKey) headers.Authorization = `Bearer ${settings.apiKey}`;
+  return headers;
+}
+
+function isTimeoutError(err) {
+  return err?.name === 'TimeoutError' || err?.name === 'AbortError';
+}
+
+async function llmHttpError(resp) {
+  if (resp.status === 401 || resp.status === 403) {
+    return new Error('LLM server rejected the API key');
+  }
+  if (resp.status === 404) {
+    return new Error('LLM endpoint or model not found');
+  }
+
+  let detail = '';
+  try {
+    const text = await resp.text();
+    if (text) detail = text.replace(/\s+/g, ' ').trim().slice(0, 200);
+  } catch {
+    // The body is optional for the error message.
+  }
+
+  return new Error(`LLM returned HTTP ${resp.status}${detail ? ` — ${detail}` : ''}`);
+}
 
 function getTone(toneId) {
   return TONES.find((tone) => tone.id === toneId)
@@ -50,32 +100,50 @@ async function generateReply(postText, toneId) {
   const post = String(postText || '').trim().slice(0, 6000);
   if (!post) throw new Error('No post text to reply to');
 
+  const settings = await resolveLlmSettings();
   const systemPrompt = await loadTonePrompt(toneId);
 
   const body = JSON.stringify({
-    model: LLM_MODEL,
+    model: settings.model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Write a reply to this post:\n\n${post}` },
     ],
-    temperature: 0.7,
-    max_tokens: 250,
+    temperature: settings.temperature,
+    max_tokens: settings.maxTokens,
     // Gemma 4 is a reasoning model. Thinking tokens add ~5s of latency and
     // occasionally leave the model with a reasoning-only completion; this
-    // server (llama.cpp) honours the standard chat-template switch.
-    chat_template_kwargs: { enable_thinking: false },
+    // server (llama.cpp) honours the standard chat-template switch. Only send
+    // the switch when the user has it enabled.
+    ...(settings.disableThinking
+      ? { chat_template_kwargs: { enable_thinking: false } }
+      : {}),
   });
 
-  const resp = await fetch(LLM_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
+  let resp;
+  try {
+    resp = await fetch(`${settings.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: llmHeaders(settings, true),
+      body,
+      signal: AbortSignal.timeout(settings.timeoutSeconds * 1000),
+    });
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      throw new Error(`LLM request timed out after ${settings.timeoutSeconds}s — increase Timeout`);
+    }
+    throw new Error(`Could not reach LLM server at ${settings.baseUrl}`);
+  }
 
-  if (!resp.ok) throw new Error(`LLM returned HTTP ${resp.status}`);
+  if (!resp.ok) throw await llmHttpError(resp);
 
-  const data = await resp.json();
+  let data;
+  try {
+    data = await resp.json();
+  } catch {
+    throw new Error('LLM returned an unreadable response');
+  }
+
   const choice = data?.choices?.[0];
 
   // OpenAI-compatible response format
@@ -93,12 +161,61 @@ async function generateReply(postText, toneId) {
   throw new Error('Unexpected LLM response');
 }
 
+async function fetchLlmModels(settings) {
+  let resp;
+  try {
+    resp = await fetch(`${settings.baseUrl}/v1/models`, {
+      method: 'GET',
+      headers: llmHeaders(settings),
+      signal: AbortSignal.timeout(LLM_MODELS_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      throw new Error('Timed out while fetching models');
+    }
+    throw new Error(`Could not reach LLM server at ${settings.baseUrl}`);
+  }
+
+  if (!resp.ok) throw await llmHttpError(resp);
+
+  let data;
+  try {
+    data = await resp.json();
+  } catch {
+    throw new Error('LLM server did not return a model list');
+  }
+
+  const raw = Array.isArray(data?.data)
+    ? data.data
+    : (Array.isArray(data?.models) ? data.models : (Array.isArray(data) ? data : []));
+  const seen = new Set();
+  const models = [];
+
+  for (const item of raw) {
+    const id = typeof item === 'string' ? item : item?.id;
+    if (typeof id !== 'string') continue;
+    const model = id.trim();
+    if (!model || seen.has(model)) continue;
+    seen.add(model);
+    models.push(model);
+  }
+
+  models.sort((a, b) => a.localeCompare(b));
+  return models.slice(0, 200);
+}
+
 async function checkLlmStatus() {
-  const resp = await fetch(LLM_MODELS_URL, {
-    method: 'GET',
-    signal: AbortSignal.timeout(4000),
-  });
-  return resp.ok;
+  try {
+    const settings = await resolveLlmSettings();
+    const resp = await fetch(`${settings.baseUrl}/v1/models`, {
+      method: 'GET',
+      headers: llmHeaders(settings),
+      signal: AbortSignal.timeout(LLM_STATUS_TIMEOUT_MS),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
 }
 
 // ===================================================================
@@ -208,6 +325,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     checkLlmStatus()
       .then((ok) => sendResponse({ ok }))
       .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message?.type === 'xb:llm-models') {
+    const baseUrl = normalizeLlmBaseUrl(message.baseUrl);
+    if (!baseUrl) {
+      sendResponse({ ok: false, error: 'Invalid server URL' });
+      return false;
+    }
+
+    resolveLlmSettings({
+      baseUrl,
+      apiKey: typeof message.apiKey === 'string' ? message.apiKey : undefined,
+    })
+      .then((settings) => fetchLlmModels(settings))
+      .then((models) => sendResponse({ ok: true, models }))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || 'Could not fetch models' }));
     return true;
   }
 
