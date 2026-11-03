@@ -18,7 +18,7 @@
 
 - **Keyword glow.** Add words you care about and matching posts in your timeline glow in the color you pick (green by default). Useful when you want to spot a topic without reading every post.
 - **Negative keywords.** Add words you never want to see and matching posts are hidden from the timeline. Turn the whole list off whenever you want it back.
-- **Feed rules.** Highlight or hide posts by the author's follower count, or by a post's comments, likes, or reposts. For example, hide posts from accounts with fewer than 1,000 followers, or highlight posts with more than 100 comments.
+- **Feed rules.** Highlight or hide posts by the author's follower or following count, or by a post's comments, likes, or reposts. Rules can use fewer than, more than, or an inclusive between range. For example, hide posts from accounts with fewer than 1,000 followers, or highlight posts with more than 100 comments.
 - **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting, negative filtering, and feed rules.
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
@@ -88,15 +88,17 @@ Each list has its own search box, five-item pages, and a **Clear All** button. S
 
 1. Click the X Buddy icon
 2. Under **Feed Rules**, choose **Hide** or **Highlight**
-3. Pick a count: **Followers**, **Comments**, **Likes**, or **Reposts**
-4. Choose **fewer than** or **more than** and type a number
+3. Pick a count: **Followers**, **Following**, **Comments**, **Likes**, or **Reposts**
+4. Choose **fewer than**, **more than**, or **between**. For **between**, enter a **Minimum** and a **Maximum**.
 5. Click **Add Rule**
 
 Rules apply as you scroll and to posts already on the page. Add up to 20. A hide rule wins over a highlight rule, and rules are independent of the keyword lists: the Feed Rules toggle and the master toggle turn them off without deleting them.
 
-Comments are the replies X shows under a post. Comparisons are strict: `fewer than 1,000` does not match exactly 1,000. Thresholds compare the count X has loaded for the post; the rounded number shown on the post is only a fallback. Reposts are judged by the account whose post is shown (the original author), and image-only posts are still checked.
+Comments are the replies X shows under a post. `fewer than` and `more than` are strict: `fewer than 1,000` does not match exactly 1,000. `between` includes both ends, so `between 1,000 and 5,000` matches both 1,000 and 5,000. Thresholds compare the count X has loaded for the post; the rounded number shown on the post is only a fallback. Reposts are judged by the account whose post is shown (the original author), and image-only posts are still checked.
 
-X does not display follower counts on posts in the timeline, so the extension reads the count from the post data X already loaded on the page. If X does not expose a count for a post, that rule leaves the post alone. Comments, likes, and reposts fall back to the counts visible on the page if the post data is unavailable.
+The extension does not compute a follower/following ratio. To narrow both sides of an account, add a **Followers** range and a **Following** range as separate rules.
+
+X does not display follower or following counts on posts in the timeline, so the extension reads them from the post data X already loaded on the page. If X does not expose a count for a post, that rule leaves the post alone. Comments, likes, and reposts fall back to the counts visible on the page if the post data is unavailable.
 
 <p align="center">
   <img src="feed-rules.png" width="340" alt="X Buddy Feed Rules section with a hide rule for posts with more than 50 comments" />
@@ -200,8 +202,8 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 | No glow | Check that the keyword is in the positive list and the positive toggle is on. Keywords match whole words only, so `ai` will not match `rain`. If the glow is there but hard to see, open **Settings** and pick a brighter color. |
 | A post I want to read is hidden | Check the negative list and the negative toggle. A negative keyword wins over a positive glow. Remove the word, or turn negative filtering off, to bring the post back. |
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
-| A feed rule does nothing | Refresh x.com if you just reloaded the extension — reloading an extension does not update tabs that are already open. Then check the **Feed Rules** toggle and the master toggle. Comparisons are strict, so `fewer than 1,000` does not match exactly 1,000. Posts whose count X does not expose are left alone. A hide rule wins over a highlight rule. |
-| Follower rules stopped working | X may have changed how it stores post data. Comments, likes, and reposts can still use the counts visible on the page; follower rules need the post data. Reload the extension and check for an update. |
+| A feed rule does nothing | Refresh x.com if you just reloaded the extension — reloading an extension does not update tabs that are already open. Then check the **Feed Rules** toggle and the master toggle. `fewer than` and `more than` are strict; `between` includes both ends. Posts whose count X does not expose are left alone, and follower and following rules need the post data. A hide rule wins over a highlight rule. |
+| Follower or following rules stopped working | X may have changed how it stores post data. Comments, likes, and reposts can still use the counts visible on the page; follower and following rules need the post data. Reload the extension and check for an update. |
 | Replies are too long or too short | Move **Reply Length** in **Settings → Reply Tones** left or right. It applies to every tone, including custom prompts, and overrides sentence limits written into a prompt. **Auto** lets the model choose, so pick a fixed level if its choice is off. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
 | Tone menu does not open | Reload the extension at `chrome://extensions` and refresh x.com. The menu is injected next to the reply send button on the classic layout. |
@@ -214,6 +216,7 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 - A new **Connect** tone drafts warm replies to posts that invite connection or ask what you are building. It offers to connect and asks one short question, with no pitch and no invented details.
 - A new **Reply Length** slider in **Settings → Reply Tones** sets how wordy Magic Reply drafts are, from one-liners to longer replies. The far-right **Auto** setting lets the model choose the length from the post instead of a fixed cap. It applies to every tone and overrides sentence limits inside a saved prompt.
 - Reply length is included in Export All / Import.
+- Feed rules can now match a **between** range with a minimum and maximum, and a new **Following** count joins Followers.
 - No new permissions and no extra network requests.
 
 ## Status
@@ -222,7 +225,7 @@ X Buddy is an early build. What is done and what is next:
 
 - [x] Keyword highlighting
 - [x] Negative keyword filtering
-- [x] Feed rules for follower and engagement counts
+- [x] Feed rules for follower, following, and engagement counts
 - [x] Master, positive, negative, and feed-rule toggles
 - [x] Keyword search, pagination, and clear-all controls
 - [x] Configurable glow color
@@ -240,7 +243,7 @@ X started testing a new web layout for logged-in users in late 2026. It removes 
 ## Privacy
 
 - The extension asks for `storage` so it can remember your keywords, and `contextMenus` so you can right-click text to add it to a list.
-- Feed rules read follower, comment, like, and repost counts from the post data X already loaded. They add no permissions and make no extra requests.
+- Feed rules read follower, following, comment, like, and repost counts from the post data X already loaded. They add no permissions and make no extra requests.
 - It can talk to `x.com`, `twitter.com`, and the local LLM server you configure (`localhost` or `127.0.0.1` only). That is it.
 - Your keyword lists, feed rules, reply length, tone prompts, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports.
 - Posts are sent to your own model server. Nothing is sent to us, and there is no analytics or remote code.

@@ -741,7 +741,7 @@
         </label>
         <div class="section-heading">
           <div class="section-label feed">Feed Rules</div>
-          <div class="section-hint">Highlight or hide posts by follower or engagement counts.</div>
+          <div class="section-hint">Highlight or hide posts by follower, following, or engagement counts.</div>
         </div>
       </div>
       <div class="input-row">
@@ -753,8 +753,12 @@
         <input type="number" id="feed-rule-threshold" min="0" step="1" inputmode="numeric"
           placeholder="Count" aria-label="Rule threshold" />
       </div>
+      <div class="input-row" id="feed-rule-max-row" style="display:none">
+        <input type="number" id="feed-rule-threshold-max" min="0" step="1" inputmode="numeric"
+          placeholder="Maximum" aria-label="Maximum count" />
+      </div>
       <button class="btn-primary" id="feed-rule-add-btn" style="margin-bottom: 8px;">Add Rule</button>
-      <div class="section-hint" style="margin-bottom: 8px;">Counts X does not expose are skipped. Hide wins over highlight.</div>
+      <div class="section-hint" style="margin-bottom: 8px;">Between includes both counts. Counts X does not expose are skipped. Hide wins over highlight.</div>
       <ul class="keyword-list" id="feed-rule-list" role="list" aria-label="Feed rules"></ul>
       <div class="empty-state" id="feed-rule-empty-state">No feed rules yet.</div>
       <button class="btn-outline btn-outline-danger" id="clear-feed-rules-btn">Clear All</button>

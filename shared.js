@@ -116,13 +116,14 @@ function normalizeLlmSettings(raw) {
 }
 
 // ===== Feed rules =====
-// Rules compare exact counts with strict < / >. Unknown counts never match.
-// A hide rule always wins over a highlight rule.
+// Rules compare exact counts. lt/gt are strict; between includes both ends.
+// Unknown counts never match. A hide rule always wins over a highlight rule.
 const FEED_RULES_KEY = 'xbBuddyFeedRules';
 const FEED_RULES_ENABLED_KEY = 'xbBuddyFeedRulesEnabled';
 
 const FEED_RULE_METRICS = Object.freeze([
   { id: 'followers', label: 'Followers', noun: 'followers', fromAccounts: true },
+  { id: 'following', label: 'Following', noun: 'following', fromAccounts: true },
   { id: 'comments', label: 'Comments', noun: 'comments', fromAccounts: false },
   { id: 'likes', label: 'Likes', noun: 'likes', fromAccounts: false },
   { id: 'reposts', label: 'Reposts', noun: 'reposts', fromAccounts: false },
@@ -131,6 +132,7 @@ const FEED_RULE_METRICS = Object.freeze([
 const FEED_RULE_OPS = Object.freeze([
   { id: 'lt', label: 'fewer than' },
   { id: 'gt', label: 'more than' },
+  { id: 'between', label: 'between', range: true },
 ]);
 
 const FEED_RULE_ACTIONS = Object.freeze([
@@ -148,26 +150,39 @@ function getFeedRuleEntry(list, id) {
   return list.find((item) => item.id === id) || null;
 }
 
+function normalizeRuleCount(raw) {
+  if (typeof raw === 'string' && !raw.trim()) return null;
+  const num = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(num)) return null;
+  return Math.min(
+    FEED_RULE_LIMITS.thresholdMax,
+    Math.max(FEED_RULE_LIMITS.thresholdMin, Math.round(num))
+  );
+}
+
 function normalizeFeedRule(raw) {
   if (!raw || typeof raw !== 'object') return null;
 
   const metric = getFeedRuleEntry(FEED_RULE_METRICS, raw.metric);
   const op = getFeedRuleEntry(FEED_RULE_OPS, raw.op);
   const action = getFeedRuleEntry(FEED_RULE_ACTIONS, raw.action);
-  const num = typeof raw.threshold === 'number' ? raw.threshold : Number(raw.threshold);
+  const threshold = normalizeRuleCount(raw.threshold);
 
-  if (!metric || !op || !action || !Number.isFinite(num)) return null;
+  if (!metric || !op || !action || threshold === null) return null;
 
-  const threshold = Math.min(
-    FEED_RULE_LIMITS.thresholdMax,
-    Math.max(FEED_RULE_LIMITS.thresholdMin, Math.round(num))
-  );
+  if (!op.range) {
+    return { metric: metric.id, op: op.id, threshold, action: action.id };
+  }
 
-  return { metric: metric.id, op: op.id, threshold, action: action.id };
+  const thresholdMax = normalizeRuleCount(raw.thresholdMax);
+  if (thresholdMax === null || threshold > thresholdMax) return null;
+
+  return { metric: metric.id, op: op.id, threshold, thresholdMax, action: action.id };
 }
 
 function feedRuleKey(rule) {
-  return `${rule.metric}|${rule.op}|${rule.threshold}|${rule.action}`;
+  const max = rule.op === 'between' ? `|${rule.thresholdMax}` : '';
+  return `${rule.metric}|${rule.op}|${rule.threshold}${max}|${rule.action}`;
 }
 
 function normalizeFeedRules(raw) {
@@ -193,6 +208,14 @@ function normalizeFeedRules(raw) {
 
 function matchesFeedRule(rule, value) {
   if (!rule || typeof value !== 'number' || !Number.isFinite(value)) return false;
+
+  if (rule.op === 'between') {
+    return typeof rule.thresholdMax === 'number'
+      && Number.isFinite(rule.thresholdMax)
+      && value >= rule.threshold
+      && value <= rule.thresholdMax;
+  }
+
   return rule.op === 'lt' ? value < rule.threshold : value > rule.threshold;
 }
 
@@ -202,8 +225,15 @@ function formatFeedRule(rule) {
   const action = getFeedRuleEntry(FEED_RULE_ACTIONS, rule.action);
   if (!metric || !op || !action) return '';
 
+  const min = rule.threshold.toLocaleString('en-US');
+  if (rule.op === 'between') {
+    if (typeof rule.thresholdMax !== 'number' || !Number.isFinite(rule.thresholdMax)) return '';
+    const max = rule.thresholdMax.toLocaleString('en-US');
+    return `${action.label} ${metric.fromAccounts ? 'posts from accounts' : 'posts'} with ${op.label} ${min} and ${max} ${metric.noun}`;
+  }
+
   const subject = metric.fromAccounts ? 'posts from accounts' : 'posts';
-  return `${action.label} ${subject} with ${op.label} ${rule.threshold.toLocaleString('en-US')} ${metric.noun}`;
+  return `${action.label} ${subject} with ${op.label} ${min} ${metric.noun}`;
 }
 
 // ===== Reply length =====

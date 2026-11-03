@@ -4,10 +4,11 @@
 // isolated content-script world, so content.js cannot read them directly.
 //
 // This helper answers window.postMessage requests from content.js with the
-// follower / comment / like / repost counts X already loaded for a post. It
-// never uses chrome.* APIs, storage, or the network, and it only ever sends
-// numbers back. The page can observe or spoof these replies; the only effect
-// is a CSS class on the page's own posts, so no privileged data is exposed.
+// follower / following / comment / like / repost counts X already loaded for a
+// post. It never uses chrome.* APIs, storage, or the network, and it only ever
+// sends numbers back. The page can observe or spoof these replies; the only
+// effect is a CSS class on the page's own posts, so no privileged data is
+// exposed.
 
 (function () {
   'use strict';
@@ -92,6 +93,7 @@
 
         return {
           followers: toCount(userLegacy.followers_count),
+          following: toCount(userLegacy.friends_count),
           comments: toCount(legacy.reply_count),
           likes: toCount(legacy.favorite_count),
           reposts: toCount(legacy.retweet_count),

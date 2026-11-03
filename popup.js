@@ -48,6 +48,8 @@ const feedRuleAction = document.getElementById('feed-rule-action');
 const feedRuleMetric = document.getElementById('feed-rule-metric');
 const feedRuleOp = document.getElementById('feed-rule-op');
 const feedRuleThreshold = document.getElementById('feed-rule-threshold');
+const feedRuleMaxRow = document.getElementById('feed-rule-max-row');
+const feedRuleThresholdMax = document.getElementById('feed-rule-threshold-max');
 const feedRuleAddBtn = document.getElementById('feed-rule-add-btn');
 const feedRuleListEl = document.getElementById('feed-rule-list');
 const feedRuleEmptyState = document.getElementById('feed-rule-empty-state');
@@ -546,6 +548,17 @@ function populateFeedRuleSelectors() {
   fillRuleSelect(feedRuleAction, FEED_RULE_ACTIONS);
   fillRuleSelect(feedRuleMetric, FEED_RULE_METRICS);
   fillRuleSelect(feedRuleOp, FEED_RULE_OPS);
+  updateFeedRuleRangeUI();
+}
+
+function updateFeedRuleRangeUI() {
+  const isBetween = feedRuleOp.value === 'between';
+  feedRuleMaxRow.style.display = isBetween ? '' : 'none';
+  feedRuleThreshold.placeholder = isBetween ? 'Minimum' : 'Count';
+  feedRuleThreshold.setAttribute(
+    'aria-label',
+    isBetween ? 'Minimum count' : 'Rule threshold'
+  );
 }
 
 function renderFeedRules() {
@@ -585,17 +598,47 @@ function renderFeedRules() {
 async function addFeedRule() {
   const raw = feedRuleThreshold.value.trim();
   const threshold = Number(raw);
+  const isBetween = feedRuleOp.value === 'between';
+  const minCount = FEED_RULE_LIMITS.thresholdMin;
+  const maxCount = FEED_RULE_LIMITS.thresholdMax;
 
   if (!raw || !Number.isInteger(threshold) ||
-      threshold < FEED_RULE_LIMITS.thresholdMin ||
-      threshold > FEED_RULE_LIMITS.thresholdMax) {
-    flashSaveFeedback(feedRuleAddBtn, 'Invalid count');
+      threshold < minCount ||
+      threshold > maxCount) {
+    flashSaveFeedback(feedRuleAddBtn, isBetween ? 'Invalid minimum' : 'Invalid count');
     showToast(
-      `Enter a whole number from 0 to ${FEED_RULE_LIMITS.thresholdMax.toLocaleString('en-US')}`,
+      isBetween
+        ? `Enter a minimum whole number from ${minCount} to ${maxCount.toLocaleString('en-US')}`
+        : `Enter a whole number from ${minCount} to ${maxCount.toLocaleString('en-US')}`,
       'error'
     );
     feedRuleThreshold.focus();
     return;
+  }
+
+  let thresholdMax;
+  if (isBetween) {
+    const rawMax = feedRuleThresholdMax.value.trim();
+    const max = Number(rawMax);
+
+    if (!rawMax || !Number.isInteger(max) || max < minCount || max > maxCount) {
+      flashSaveFeedback(feedRuleAddBtn, 'Invalid maximum');
+      showToast(
+        `Enter a maximum whole number from ${minCount} to ${maxCount.toLocaleString('en-US')}`,
+        'error'
+      );
+      feedRuleThresholdMax.focus();
+      return;
+    }
+
+    if (threshold > max) {
+      flashSaveFeedback(feedRuleAddBtn, 'Invalid range');
+      showToast('Minimum must be less than or equal to the maximum', 'error');
+      feedRuleThreshold.focus();
+      return;
+    }
+
+    thresholdMax = max;
   }
 
   const rule = normalizeFeedRule({
@@ -603,6 +646,7 @@ async function addFeedRule() {
     op: feedRuleOp.value,
     action: feedRuleAction.value,
     threshold,
+    ...(isBetween ? { thresholdMax } : {}),
   });
 
   if (!rule) {
@@ -631,6 +675,7 @@ async function addFeedRule() {
   }
 
   feedRuleThreshold.value = '';
+  feedRuleThresholdMax.value = '';
   renderFeedRules();
   showToast('Feed rule added');
 }
@@ -774,6 +819,8 @@ function refreshFromState() {
   positivePage = 1;
   negativePage = 1;
   feedRuleThreshold.value = '';
+  feedRuleThresholdMax.value = '';
+  updateFeedRuleRangeUI();
 
   applyMasterState();
   applyPositiveState();
@@ -1113,7 +1160,13 @@ feedRulesToggle.addEventListener('change', async () => {
 
 feedRuleAddBtn.addEventListener('click', addFeedRule);
 
+feedRuleOp.addEventListener('change', updateFeedRuleRangeUI);
+
 feedRuleThreshold.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') feedRuleAddBtn.click();
+});
+
+feedRuleThresholdMax.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') feedRuleAddBtn.click();
 });
 

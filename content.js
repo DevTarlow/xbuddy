@@ -675,10 +675,10 @@ function processPost(container) {
 }
 
 // ===================================================================
-//  FEED RULES (follower / engagement thresholds)
+//  FEED RULES (follower / following / engagement thresholds)
 //  Metrics come from page-metrics.js in the MAIN world. If that bridge does
 //  not answer, comments/likes/reposts fall back to page-visible counts and
-//  followers stay unknown. Unknown counts never match a rule.
+//  followers/following stay unknown. Unknown counts never match a rule.
 // ===================================================================
 
 const ENGAGEMENT_BUTTON_SELECTORS = {
@@ -807,6 +807,7 @@ function normalizeMetrics(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   return {
     followers: normalizeMetricValue(source.followers),
+    following: normalizeMetricValue(source.following),
     comments: normalizeMetricValue(source.comments),
     likes: normalizeMetricValue(source.likes),
     reposts: normalizeMetricValue(source.reposts),
@@ -821,7 +822,8 @@ function normalizeMetricValue(value) {
 
 // The page helper may not expose every count (for example, a fiber shape
 // without reply_count). Fill gaps from the counts visible on the post so
-// comment/like/repost rules still work. Followers have no timeline fallback.
+// comment/like/repost rules still work. Follower and following counts have no
+// timeline fallback.
 function fillMissingMetricsFromDom(article, metrics) {
   if (metrics.comments != null && metrics.likes != null && metrics.reposts != null) return;
 
@@ -832,7 +834,13 @@ function fillMissingMetricsFromDom(article, metrics) {
 }
 
 function readDomEngagement(article) {
-  const metrics = { followers: null, comments: null, likes: null, reposts: null };
+  const metrics = {
+    followers: null,
+    following: null,
+    comments: null,
+    likes: null,
+    reposts: null,
+  };
   if (!article || typeof article.querySelector !== 'function') return metrics;
 
   const group = findEngagementGroup(article);
