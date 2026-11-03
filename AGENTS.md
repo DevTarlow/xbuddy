@@ -174,6 +174,17 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`. The fee
 4. Navigate to `https://x.com`
 5. Edit files → refresh extension → reload x.com
 
+### Testing in the installed Chrome profile
+
+This Chrome build ignores `--load-extension`, so a fresh temporary profile will not load the unpacked extension. When X Buddy is already installed unpacked in the user's Chrome profile, test against a copy of that profile:
+
+1. Copy `Local State`, `Default/Preferences`, and `Default/Secure Preferences` from the Chrome user data directory into a temporary directory.
+2. Launch Chrome with that temporary `--user-data-dir`, `--headless=new`, and a free `--remote-debugging-port`. Add `--no-sandbox` only where the Chrome sandbox is unavailable, such as this container.
+3. Read the X Buddy ID from `extensions.settings` in the copied preferences, open `chrome-extension://<id>/popup.html` through the DevTools protocol, and test the popup and service worker. The unpacked extension loads from its absolute path, so it uses the current working tree.
+4. Delete the temporary directory when done. Never run Chrome against the live profile and never edit its files.
+
+Other installed extensions may log missing-file errors because their files were not copied; only the X Buddy service worker and popup matter. The live browser window cannot be attached to unless it was started with `--remote-debugging-port`; use this profile copy for repeatable checks and the live browser for content-script checks that need a signed-in x.com session.
+
 ### Debugging
 
 - Set `DEBUG = true` at the top of `content.js` for verbose logging in the isolated-content-script console, and in `page-metrics.js` for logging in the page console. There is no runtime toggle wired up.
