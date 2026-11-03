@@ -22,10 +22,10 @@
 - **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting, negative filtering, and feed rules.
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
-- **Backup.** Export keywords, toggles, glow color, feed rules, tone prompts, and LLM settings to a JSON file, and import them on another browser.
+- **Backup.** Export keywords, toggles, glow color, feed rules, reply length, tone prompts, and LLM settings to a JSON file, and import them on another browser.
 - **Right-click capture.** Select a word or hashtag on X and add it to either list from the context menu, with a toast confirming the add.
-- **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt. You can edit the draft before posting.
-- **Local LLM settings.** Point Magic Reply at any OpenAI-compatible server on `localhost` or `127.0.0.1`, choose the model, and tune temperature, reply length, timeout, and thinking. An optional API key is supported.
+- **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt and a Reply Length slider keeps drafts short or lets them run longer. You can edit the draft before posting.
+- **Local LLM settings.** Point Magic Reply at any OpenAI-compatible server on `localhost` or `127.0.0.1`, choose the model, and tune temperature, max reply tokens, timeout, and thinking. An optional API key is supported.
 - **Stays local.** No accounts and no tracking. Most local servers need no API key; if yours does, it stays in Chrome's local storage. Your keywords and posts go to the model on your computer and nowhere else.
 
 ## What you need
@@ -122,7 +122,7 @@ Matching posts use the new color immediately, and the choice survives reloads.
 2. Click **Export All** to download `xbuddy-config.json`
 3. On another browser, click **Import** and pick that file
 
-A full config restore replaces the current keyword lists, toggles, glow color, feed rules, tone prompts, and non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
+A full config restore replaces the current keyword lists, toggles, glow color, feed rules, reply length, tone prompts, and non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
 
 ### Add a keyword from the page
 
@@ -161,6 +161,14 @@ The Server URL must be `localhost` or `127.0.0.1`. Include the port; the extensi
 
 The reply goes into the composer, not straight to X. You always get the final say.
 
+### Set reply length
+
+1. Click the X Buddy icon and expand **Settings**
+2. Under **Reply Length**, drag the slider between **Shorter** and **Longer**
+3. The readout shows the current target, for example `Short · 1 sentence, 15 words max`
+
+The setting applies to every tone, including prompts you edit, and is applied when the reply is generated. Shorter settings produce fewer words and fewer follow-up sentences. It is saved as soon as you release the slider and is included in Export All / Import.
+
 ### Edit reply tones
 
 1. Click the X Buddy icon and expand **Settings**
@@ -168,7 +176,7 @@ The reply goes into the composer, not straight to X. You always get the final sa
 3. Change the system prompt, then click **Save**
 4. Click **Restore Default** to put the built-in prompt back
 
-Each tone's prompt is saved separately. The Magic Reply menu uses whatever prompt is saved for the tone you pick.
+Each tone's prompt is saved separately. The Magic Reply menu uses whatever prompt is saved for the tone you pick. Built-in prompts were rewritten in 1.6.0 to sound like a person replying on X. If you saved the old built-in text without editing it, it now picks up the new prompt automatically; prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
 
 <p align="center">
   <img src="glow-and-reply-tones.png" width="340" alt="X Buddy Settings showing the glow color picker, reply tone prompt editor, and export/import controls" />
@@ -192,16 +200,17 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
 | A feed rule does nothing | Refresh x.com if you just reloaded the extension — reloading an extension does not update tabs that are already open. Then check the **Feed Rules** toggle and the master toggle. Comparisons are strict, so `fewer than 1,000` does not match exactly 1,000. Posts whose count X does not expose are left alone. A hide rule wins over a highlight rule. |
 | Follower rules stopped working | X may have changed how it stores post data. Comments, likes, and reposts can still use the counts visible on the page; follower rules need the post data. Reload the extension and check for an update. |
+| Replies are too long or too short | Move **Reply Length** in **Settings → Reply Tones** left or right. It applies to every tone, including custom prompts, and overrides sentence limits written into a prompt. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
 | Tone menu does not open | Reload the extension at `chrome://extensions` and refresh x.com. The menu is injected next to the reply send button on the classic layout. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
-| Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, and 3 configs, or older files with `positive` and/or `negative` arrays. |
+| Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, 3, and 4 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.5.0
+## What's new in 1.6.0
 
-- **Feed Rules** highlight or hide posts by follower count or by a post's comments, likes, and reposts.
-- Rules apply to posts already on the page and to posts loaded while you scroll.
-- Feed rules are included in Export All / Import.
+- Reply tone prompts were rewritten to sound like a person replying on X: specific, short, and free of AI filler.
+- A new **Reply Length** slider in **Settings → Reply Tones** sets how wordy Magic Reply drafts are, from one-liners to longer replies. It applies to every tone and overrides sentence limits inside a saved prompt.
+- Reply length is included in Export All / Import.
 - No new permissions and no extra network requests.
 
 ## Status
@@ -218,6 +227,7 @@ X Buddy is an early build. What is done and what is next:
 - [x] Right-click keyword capture
 - [x] Magic Reply with a local model
 - [x] Five reply tones with editable prompts
+- [x] Adjustable reply length
 - [x] LLM settings for the server URL, model, and generation options
 - [ ] Support X's new web layout
 - [ ] Chrome Web Store release
@@ -229,7 +239,7 @@ X started testing a new web layout for logged-in users in late 2026. It removes 
 - The extension asks for `storage` so it can remember your keywords, and `contextMenus` so you can right-click text to add it to a list.
 - Feed rules read follower, comment, like, and repost counts from the post data X already loaded. They add no permissions and make no extra requests.
 - It can talk to `x.com`, `twitter.com`, and the local LLM server you configure (`localhost` or `127.0.0.1` only). That is it.
-- Your keyword lists, feed rules, tone prompts, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports.
+- Your keyword lists, feed rules, reply length, tone prompts, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports.
 - Posts are sent to your own model server. Nothing is sent to us, and there is no analytics or remote code.
 
 ## License

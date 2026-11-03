@@ -59,7 +59,7 @@ There is no automated test suite. Before committing a behavior change, check:
 - A highlight rule glows matching posts in the chosen glow color, and removing it or disabling Feed Rules restores the post.
 - A rule with an unavailable metric (for example, followers on a post X did not expose) leaves the post alone instead of hiding or highlighting it.
 - Duplicate, invalid, and over-limit feed rules are rejected with feedback, and successful rules persist after reopening the popup.
-- Export All downloads a JSON config; importing it restores the lists, toggles, glow color, feed rules, and tone prompts.
+- Export All downloads a JSON config; importing it restores the lists, toggles, glow color, feed rules, reply length, and tone prompts.
 - Importing a version 1 or 2 config still works and leaves the current feed rules untouched.
 - Importing a legacy file with only `positive`/`negative` arrays merges keywords instead of replacing the lists.
 - Right-clicking a selection or hashtag offers both keyword lists, saves the keyword, shows a page toast, and the popup reflects the change.
@@ -67,6 +67,9 @@ There is no automated test suite. Before committing a behavior change, check:
 - Magic Reply opens a tone menu with Generic, Agree, Disagree, Funny, and Informative.
 - Choosing a tone sends that tone and fills the composer.
 - Editing a tone prompt in Settings changes the generated reply; Restore Default resets it.
+- The Reply Length slider shows the saved level after reopening the popup, and level 1 produces a visibly shorter reply than level 5.
+- Reply Length changes the output for a hand-edited tone prompt, not just the built-in prompts.
+- A prompt saved as an old built-in default loads the new default; a hand-edited prompt is left alone.
 - Magic Reply fills the composer, the send button enables, and an existing draft is replaced rather than appended.
 - The popup shows the real LLM status.
 - Settings → Local LLM shows the defaults, and URL/model/generation values persist after reopening the popup.
@@ -81,7 +84,7 @@ There is no automated test suite. Before committing a behavior change, check:
 ```
 manifest.json          — MV3 manifest
 page-metrics.js        — MAIN-world helper: reads tweet metrics from page React data and answers postMessage requests
-shared.js              — Shared tone presets, LLM defaults, feed-rule normalization, and LLM settings normalization
+shared.js              — Shared tone presets, tone prompt resolution, reply length presets, LLM defaults, feed-rule normalization, and LLM settings normalization
 popup.html             — Popup UI (340px, dark theme)
 popup.js               — Popup logic: keyword CRUD, feed rules, toggles, tone editor, LLM settings/status
 content.js             — Content script: keyword glow/filter, feed-rule evaluation, Magic Reply tone menu
@@ -105,6 +108,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`. The fee
 | `xbBuddyFeedRulesEnabled` | `boolean` | `true` | Feed-rule highlighting/filtering on/off |
 | `xbBuddyGlowColor` | `string` | `#00ff41` | Highlight color (`#rrggbb`) |
 | `xbBuddyTonePrompt_<id>` | `string` | `TONES[*].defaultPrompt` | Per-tone Magic Reply system prompt (`generic`, `agree`, `disagree`, `funny`, `informative`) |
+| `xbBuddyReplyLength` | `integer` | `2` | Magic Reply length level 1–5 (`One-liner`, `Short`, `Balanced`, `Detailed`, `Long`) |
 | `xbBuddyLlmSettings` | `object` | `LLM_DEFAULTS` | Local LLM base URL, model, temperature, max tokens, timeout, thinking toggle, and optional API key |
 | `xbBuddySettingsOpen` | `boolean` | `false` | Popup Settings section open state |
 | `xbBuddyNotification` | `object` | absent | Transient context-menu toast (`keyword`, `listType`, `duplicate`, or `error`) |
@@ -114,7 +118,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`. The fee
 - Use `const` / `let`, never `var`
 - Async functions where storage/network is involved
 - `DEBUG` flags in `content.js` and `page-metrics.js` toggle verbose console logging
-- `shared.js` loads before `content.js` and `popup.js`, and via `importScripts('shared.js')` in the service worker. Tone IDs are stable: stored prompts and exported configs use them. LLM defaults, limits, and URL/settings normalization also live here so the popup and service worker cannot drift. Feed-rule metric/op/action lists, limits, normalization, and labels live here too.
+- `shared.js` loads before `content.js` and `popup.js`, and via `importScripts('shared.js')` in the service worker. Tone IDs are stable: stored prompts and exported configs use them. Tone prompt resolution, legacy default handling, and reply length presets live here too. LLM defaults, limits, and URL/settings normalization also live here so the popup and service worker cannot drift. Feed-rule metric/op/action lists, limits, normalization, and labels live here too.
 - `page-metrics.js` runs in the page's MAIN world because page-world React expandos are invisible to the isolated content script. It uses no `chrome.*` APIs, returns only counts, and validates the request channel/token.
 - Feed-rule effects use their own classes (`xb-rule-glow-post` / `xb-rule-hidden-post`) so rule changes can be undone without touching keyword effects.
 - Error states surface via `console.error` + `showToast()` in popup
@@ -130,7 +134,8 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`. The fee
 - **Post metrics**: `page-metrics.js` is declared first in `content_scripts` with `world: "MAIN"` (Chrome 111+) and `run_at: "document_start"`. The content script sets `data-xb-metrics-req="<token>"` on the article and posts `{channel: 'xb-buddy-metrics', type: 'request', token}`. The helper walks up to 40 React fiber `return` levels for `memoizedProps.tweet` (unwrapping `TweetWithVisibilityResults` / `tweet_results`), reads `legacy.reply_count`, `legacy.favorite_count`, `legacy.retweet_count`, and `core.user_results.result.legacy.followers_count`, and replies with the same token. A 400 ms timeout falls back to page-visible engagement counts (group/button `aria-label`s); followers stay unknown. One 500 ms retry covers late-mounted data. Rule evaluation is async and guarded by `rulesGeneration` plus `WeakMap` caches.
 - **Isolated world**: content scripts cannot see expando properties such as `__reactFiber$` set by the page. The existing `findReactFiber()` in `content.js` therefore cannot reliably detect page React ownership; metrics must go through `page-metrics.js`. Do not add a second fiber reader to the isolated script.
 - **Magic Reply injection**: Injects a `div.magic-reply-wrapper` containing `button.magic-reply-btn` near the send button in dialog and inline composers. Clicking the button opens the tone menu. Dialog detection uses `div[role="dialog"]` and `[data-testid="sheetDialog"]`.
-- **Reply tones**: `shared.js` defines `TONES` (Generic, Agree, Disagree, Funny, Informative) and `TONE_PROMPT_PREFIX`. The popup edits `xbBuddyTonePrompt_<id>`; the content menu sends `toneId` with `xb:generate-reply`; `background.js` loads that prompt (or the built-in default) per request. Unknown tone IDs fall back to `generic`.
+- **Reply tones**: `shared.js` defines `TONES` (Generic, Agree, Disagree, Funny, Informative), `TONE_PROMPT_PREFIX`, `REPLY_VOICE_CORE`, `withReplyVoice()`, `LEGACY_TONE_PROMPTS`, and `resolveTonePrompt()`. Each `defaultPrompt` is the shared voice core plus tone-specific direction. The popup edits `xbBuddyTonePrompt_<id>`; the content menu sends `toneId` with `xb:generate-reply`; `background.js` resolves that prompt (or the built-in default) per request. `resolveTonePrompt()` treats an exact old built-in (`LEGACY_TONE_PROMPTS`) as unsaved, so the 1.6.0 rewrite reaches previously saved defaults without overwriting hand-edited prompts. Unknown tone IDs fall back to `generic`.
+- **Reply length**: `shared.js` defines `REPLY_LENGTH_KEY`, `DEFAULT_REPLY_LENGTH`, `REPLY_LENGTH_LEVELS`, `normalizeReplyLength()`, `getReplyLengthLevel()`, `formatReplyLength()`, and `buildReplyLengthInstruction()`. The popup writes `xbBuddyReplyLength`; `background.js` reads it per request and appends the instruction after the post in the user message, where the model follows it better than in the system prompt. The instruction explicitly overrides sentence limits written into a tone prompt. Length is a prompt target, not a post-processing truncation.
 - **Tone menu**: a fixed-position `div.magic-reply-dropdown` is appended to `document.body` with one button per tone. It closes on selection, outside click, or Escape, repositions on scroll/resize, flips above the trigger near the viewport bottom, and is removed when the master toggle pauses.
 - **Inline composer edge case**: On tweet detail pages, the composer is inline (not in a dialog). The tweet text lives ABOVE the composer in the DOM — `findTweetTextBefore()` picks the last `[data-testid="tweetText"]` that precedes the composer. The button is only injected on reply surfaces (`/status/`, `/compose/post`, or `in_reply_to=`), not the home timeline's "Post" box.
 - **Text insertion**: X's composer is Draft.js, whose DOM is owned by React. `insertTextIntoReply()` dispatches a synthetic `paste` event (after focusing and selecting the draft) so Draft updates its own `EditorState` and enables the Reply button. Do NOT use `textContent`/`execCommand` on the Draft DOM — it desyncs React and throws `removeChild is not a child of this node`.
@@ -139,7 +144,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`. The fee
 - **Master toggle**: `disableExtension()` stops the observer and safety checks, clears every injected class/marker, closes the tone menu, and removes Magic Reply wrappers. `enableExtension()` reloads settings and rescans. All scan functions are guarded by `enabled`.
 - **Popup lists**: five items per page, case-insensitive search, Clear All behind `confirm()`, and a 100-character limit. Duplicate or over-long adds flash feedback on the Add button; successful adds, clears, and toggle changes use the popup toast (`showToast(msg, 'error')` for failures).
 - **Glow color**: `applyGlowColor()` converts the stored `#rrggbb` value into `--xb-glow-rgb` on `document.documentElement`. The CSS uses `rgba(var(--xb-glow-rgb, 0, 255, 65), …)`, so existing glowing posts recolor immediately without a rescan. Invalid values fall back to `#00ff41`.
-- **Export/import**: version 3 configs are marked `app: 'xbuddy'` and carry both lists, all toggles, glow color, feed rules, `tonePrompts`, and a non-secret `llm` object (base URL, model, temperature, max tokens, timeout, thinking toggle). The API key is never exported or imported. A versioned import replaces the present keys in one `chrome.storage.local.set`; version 1 and 2 files still import (and leave feed rules untouched), and legacy files containing only `positive`/`negative` arrays merge additively. Other app markers, invalid JSON, and over-100-character keywords are rejected or skipped.
+- **Export/import**: version 4 configs are marked `app: 'xbuddy'` and carry both lists, all toggles, glow color, feed rules, `replyLength`, `tonePrompts`, and a non-secret `llm` object (base URL, model, temperature, max tokens, timeout, thinking toggle). The API key is never exported or imported. A versioned import replaces the present keys in one `chrome.storage.local.set`; version 1, 2, and 3 files still import (version 3 leaves `replyLength` untouched), and legacy files containing only `positive`/`negative` arrays merge additively. Imported tone prompts run through `resolveTonePrompt()` so an old built-in in a config also upgrades. Invalid `replyLength` values are ignored, not written. Other app markers, invalid JSON, and over-100-character keywords are rejected or skipped.
 - **Context menus**: `background.js` creates positive/negative selection menus for x.com and twitter.com on install/startup. The click handler trims/collapses whitespace, strips leading `#`, rejects over-100 values, dedupes case-insensitively, and writes the list plus `xbBuddyNotification` in one `set`. The content script shows `showPageToast()` and clears the notification key; a pending notification is also consumed on page load.
 - **Security**: CSP in manifest restricts to `script-src 'self'`. Only `storage` and `contextMenus` permissions are declared, plus host permissions for x.com/twitter.com and loopback (`http(s)://localhost/*`, `http(s)://127.0.0.1/*`, any port). LLM requests are restricted to loopback, and the optional API key stays in local storage and out of exports. `page-metrics.js` runs in the MAIN world with no extension APIs and returns only counts; the page can spoof its replies, but the only effect is a CSS class on that page's own posts.
 - **Error boundary**: Global `error` and `unhandledrejection` listeners catch + log exceptions.
@@ -187,8 +192,9 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`. The fee
 - **Add a feed-rule metric**: Add an entry to `FEED_RULE_METRICS` in `shared.js`, add its extraction in `page-metrics.js` (`readMetrics`) and the DOM fallback in `content.js` (`readDomEngagement`), then wire the metric name into `applyRuleResult`. The popup selector is generated from the shared list, so it needs no edit.
 - **Change feed-rule wording or limits**: Edit `formatFeedRule()` or `FEED_RULE_LIMITS` in `shared.js`; the popup and content script both read them.
 - **Change context menu labels**: Edit the titles in `setupContextMenus()` in `background.js`; menus are recreated on install/startup
-- **Change a default tone prompt**: Edit the matching `defaultPrompt` in `TONES` in `shared.js`. Saved prompts override the default until the user clicks Restore Default.
-- **Add a reply tone**: Add an entry to `TONES` in `shared.js`. The popup selector, tone editor, Magic Reply menu, and background all read from that array; no other list to update.
+- **Change a default tone prompt**: Edit the matching `defaultPrompt` in `TONES` in `shared.js`, or the shared wording in `REPLY_VOICE_CORE`. When replacing a built-in again, append the previous string to `LEGACY_TONE_PROMPTS[tone.id]` so saved old defaults pick up the new one. Hand-edited prompts still override the default until the user clicks Restore Default.
+- **Change reply length levels**: Edit `REPLY_LENGTH_LEVELS` / `DEFAULT_REPLY_LENGTH` in `shared.js`; the popup slider and the background instruction both read them.
+- **Add a reply tone**: Add an entry to `TONES` in `shared.js`. The popup selector, tone editor, Magic Reply menu, and background all read from that array; no other list to update. Add a `LEGACY_TONE_PROMPTS` key only when the tone previously shipped with a different default.
 - **Change tone menu labels**: Edit the `label` fields in `TONES` in `shared.js`.
 - **Change default LLM endpoint/model**: Edit `LLM_DEFAULTS` in `shared.js`; users override the URL and model in Settings.
 - **Change LLM validation limits**: Edit `LLM_LIMITS` in `shared.js`; the popup and background both read them.

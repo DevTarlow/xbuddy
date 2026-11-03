@@ -80,12 +80,21 @@ async function loadTonePrompt(toneId) {
   const key = TONE_PROMPT_PREFIX + tone.id;
   try {
     const stored = await chrome.storage.local.get(key);
-    const value = stored[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
+    return resolveTonePrompt(tone, stored[key]);
   } catch (err) {
     console.warn('[X Buddy] Could not load tone prompt:', err);
+    return tone.defaultPrompt;
   }
-  return tone.defaultPrompt;
+}
+
+async function loadReplyLength() {
+  try {
+    const stored = await chrome.storage.local.get(REPLY_LENGTH_KEY);
+    return normalizeReplyLength(stored[REPLY_LENGTH_KEY]);
+  } catch (err) {
+    console.warn('[X Buddy] Could not load reply length:', err);
+    return DEFAULT_REPLY_LENGTH;
+  }
 }
 
 function cleanReply(text) {
@@ -101,13 +110,17 @@ async function generateReply(postText, toneId) {
   if (!post) throw new Error('No post text to reply to');
 
   const settings = await resolveLlmSettings();
-  const systemPrompt = await loadTonePrompt(toneId);
+  const [systemPrompt, replyLength] = await Promise.all([
+    loadTonePrompt(toneId),
+    loadReplyLength(),
+  ]);
+  const userPrompt = `Write a reply to this post:\n\n${post}\n\n${buildReplyLengthInstruction(replyLength)}`;
 
   const body = JSON.stringify({
     model: settings.model,
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Write a reply to this post:\n\n${post}` },
+      { role: 'user', content: userPrompt },
     ],
     temperature: settings.temperature,
     max_tokens: settings.maxTokens,

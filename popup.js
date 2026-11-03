@@ -73,6 +73,8 @@ const tonePromptLabel = document.getElementById('tone-prompt-label');
 const tonePromptInput = document.getElementById('tone-prompt-input');
 const saveToneBtn = document.getElementById('save-tone-btn');
 const restoreToneBtn = document.getElementById('restore-tone-btn');
+const replyLengthInput = document.getElementById('reply-length-input');
+const replyLengthValue = document.getElementById('reply-length-value');
 const exportBtn = document.getElementById('export-btn');
 const importBtn = document.getElementById('import-btn');
 const importInput = document.getElementById('import-input');
@@ -96,6 +98,7 @@ let settingsOpen = false;
 let llmSettings = { ...LLM_DEFAULTS };
 let tonePrompts = {};
 let currentToneId = DEFAULT_TONE_ID;
+let replyLength = DEFAULT_REPLY_LENGTH;
 let toastTimer = null;
 
 // --- Toast ---
@@ -177,14 +180,23 @@ async function loadTonePrompts() {
     const stored = await chrome.storage.local.get(keys);
     for (const tone of TONES) {
       const value = stored[TONE_PROMPT_PREFIX + tone.id];
-      tonePrompts[tone.id] = typeof value === 'string' && value.trim()
-        ? value
-        : tone.defaultPrompt;
+      tonePrompts[tone.id] = resolveTonePrompt(tone, value);
     }
   } catch (e) {
     console.error('[X Buddy] Failed to load tone prompts:', e);
     for (const tone of TONES) tonePrompts[tone.id] = tone.defaultPrompt;
   }
+}
+
+function updateReplyLengthReadout(level) {
+  const text = formatReplyLength(level);
+  replyLengthValue.textContent = text;
+  replyLengthInput.setAttribute('aria-valuetext', text);
+}
+
+function applyReplyLengthToForm() {
+  replyLengthInput.value = String(replyLength);
+  updateReplyLengthReadout(replyLength);
 }
 
 // --- Local LLM settings ---
@@ -360,6 +372,7 @@ async function loadState() {
       FEED_RULES_ENABLED_KEY,
       SETTINGS_OPEN_KEY,
       LLM_SETTINGS_KEY,
+      REPLY_LENGTH_KEY,
     ]);
     keywords = normalizeKeywords(result[STORAGE_KEY] || []);
     negativeKeywords = normalizeKeywords(result[NEGATIVE_STORAGE_KEY] || []);
@@ -371,6 +384,7 @@ async function loadState() {
     feedRulesEnabled = result[FEED_RULES_ENABLED_KEY] !== false;
     settingsOpen = result[SETTINGS_OPEN_KEY] === true;
     llmSettings = normalizeLlmSettings(result[LLM_SETTINGS_KEY]);
+    replyLength = normalizeReplyLength(result[REPLY_LENGTH_KEY]);
   } catch (e) {
     console.error('[X Buddy] Failed to load settings:', e);
     showToast('Failed to load settings', 'error');
@@ -705,7 +719,7 @@ function prepareImportedKeywords(arr) {
 function buildConfig() {
   return {
     app: 'xbuddy',
-    version: 3,
+    version: 4,
     positive: keywords,
     negative: negativeKeywords,
     positiveEnabled,
@@ -714,6 +728,7 @@ function buildConfig() {
     glowColor,
     feedRules: feedRules.map((rule) => ({ ...rule })),
     feedRulesEnabled,
+    replyLength,
     tonePrompts: { ...tonePrompts },
     llm: {
       baseUrl: llmSettings.baseUrl,
@@ -765,6 +780,7 @@ function refreshFromState() {
   renderKeywords();
   renderNegativeKeywords();
   renderFeedRules();
+  applyReplyLengthToForm();
   updateToneEditor();
 }
 
@@ -829,6 +845,16 @@ function applyImportedLlmSettings(raw) {
   return changed ? next : null;
 }
 
+function importedReplyLength(value) {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  const level = Math.round(num);
+  if (level < 1 || level > REPLY_LENGTH_LEVELS.length) return null;
+  return level;
+}
+
 async function importFullConfig(data) {
   const toSet = {};
 
@@ -848,11 +874,13 @@ async function importFullConfig(data) {
   if (typeof data.feedRulesEnabled === 'boolean') {
     toSet[FEED_RULES_ENABLED_KEY] = data.feedRulesEnabled;
   }
+  const length = importedReplyLength(data.replyLength);
+  if (length !== null) toSet[REPLY_LENGTH_KEY] = length;
   if (data.tonePrompts && typeof data.tonePrompts === 'object') {
     for (const tone of TONES) {
       const prompt = data.tonePrompts[tone.id];
       if (typeof prompt === 'string' && prompt.trim()) {
-        toSet[TONE_PROMPT_PREFIX + tone.id] = prompt;
+        toSet[TONE_PROMPT_PREFIX + tone.id] = resolveTonePrompt(tone, prompt);
       }
     }
   }
@@ -886,13 +914,10 @@ async function importFullConfig(data) {
   if (toSet[FEED_RULES_ENABLED_KEY] !== undefined) {
     feedRulesEnabled = toSet[FEED_RULES_ENABLED_KEY];
   }
-  if (data.tonePrompts && typeof data.tonePrompts === 'object') {
-    for (const tone of TONES) {
-      const prompt = data.tonePrompts[tone.id];
-      if (typeof prompt === 'string' && prompt.trim()) {
-        tonePrompts[tone.id] = prompt;
-      }
-    }
+  if (toSet[REPLY_LENGTH_KEY] !== undefined) replyLength = toSet[REPLY_LENGTH_KEY];
+  for (const tone of TONES) {
+    const key = TONE_PROMPT_PREFIX + tone.id;
+    if (typeof toSet[key] === 'string') tonePrompts[tone.id] = toSet[key];
   }
   if (toSet[LLM_SETTINGS_KEY]) llmSettings = { ...toSet[LLM_SETTINGS_KEY] };
 
@@ -1224,6 +1249,26 @@ toneSelect.addEventListener('change', () => {
   updateToneEditor();
 });
 
+replyLengthInput.addEventListener('input', () => {
+  updateReplyLengthReadout(normalizeReplyLength(replyLengthInput.value));
+});
+
+replyLengthInput.addEventListener('change', async () => {
+  const next = normalizeReplyLength(replyLengthInput.value);
+  const previous = replyLength;
+
+  if (!(await saveFlag(REPLY_LENGTH_KEY, next))) {
+    replyLengthInput.value = String(previous);
+    updateReplyLengthReadout(previous);
+    return;
+  }
+
+  replyLength = next;
+  replyLengthInput.value = String(next);
+  updateReplyLengthReadout(next);
+  showToast(`Reply length: ${getReplyLengthLevel(next).label}`);
+});
+
 saveToneBtn.addEventListener('click', async () => {
   const value = tonePromptInput.value.trim();
   if (!value) {
@@ -1263,6 +1308,7 @@ importInput.addEventListener('change', handleImportFile);
   feedRulesToggle.checked = feedRulesEnabled;
   glowColorInput.value = glowColor;
   applyLlmSettingsToForm();
+  applyReplyLengthToForm();
   applyMasterState();
   applyPositiveState();
   applyNegativeState();
