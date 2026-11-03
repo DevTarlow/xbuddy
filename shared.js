@@ -115,6 +115,97 @@ function normalizeLlmSettings(raw) {
   };
 }
 
+// ===== Feed rules =====
+// Rules compare exact counts with strict < / >. Unknown counts never match.
+// A hide rule always wins over a highlight rule.
+const FEED_RULES_KEY = 'xbBuddyFeedRules';
+const FEED_RULES_ENABLED_KEY = 'xbBuddyFeedRulesEnabled';
+
+const FEED_RULE_METRICS = Object.freeze([
+  { id: 'followers', label: 'Followers', noun: 'followers', fromAccounts: true },
+  { id: 'comments', label: 'Comments', noun: 'comments', fromAccounts: false },
+  { id: 'likes', label: 'Likes', noun: 'likes', fromAccounts: false },
+  { id: 'reposts', label: 'Reposts', noun: 'reposts', fromAccounts: false },
+]);
+
+const FEED_RULE_OPS = Object.freeze([
+  { id: 'lt', label: 'fewer than' },
+  { id: 'gt', label: 'more than' },
+]);
+
+const FEED_RULE_ACTIONS = Object.freeze([
+  { id: 'hide', label: 'Hide' },
+  { id: 'highlight', label: 'Highlight' },
+]);
+
+const FEED_RULE_LIMITS = Object.freeze({
+  maxRules: 20,
+  thresholdMin: 0,
+  thresholdMax: 1000000000,
+});
+
+function getFeedRuleEntry(list, id) {
+  return list.find((item) => item.id === id) || null;
+}
+
+function normalizeFeedRule(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const metric = getFeedRuleEntry(FEED_RULE_METRICS, raw.metric);
+  const op = getFeedRuleEntry(FEED_RULE_OPS, raw.op);
+  const action = getFeedRuleEntry(FEED_RULE_ACTIONS, raw.action);
+  const num = typeof raw.threshold === 'number' ? raw.threshold : Number(raw.threshold);
+
+  if (!metric || !op || !action || !Number.isFinite(num)) return null;
+
+  const threshold = Math.min(
+    FEED_RULE_LIMITS.thresholdMax,
+    Math.max(FEED_RULE_LIMITS.thresholdMin, Math.round(num))
+  );
+
+  return { metric: metric.id, op: op.id, threshold, action: action.id };
+}
+
+function feedRuleKey(rule) {
+  return `${rule.metric}|${rule.op}|${rule.threshold}|${rule.action}`;
+}
+
+function normalizeFeedRules(raw) {
+  if (!Array.isArray(raw)) return [];
+
+  const seen = new Set();
+  const out = [];
+
+  for (const item of raw) {
+    const rule = normalizeFeedRule(item);
+    if (!rule) continue;
+
+    const key = feedRuleKey(rule);
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    out.push(rule);
+    if (out.length >= FEED_RULE_LIMITS.maxRules) break;
+  }
+
+  return out;
+}
+
+function matchesFeedRule(rule, value) {
+  if (!rule || typeof value !== 'number' || !Number.isFinite(value)) return false;
+  return rule.op === 'lt' ? value < rule.threshold : value > rule.threshold;
+}
+
+function formatFeedRule(rule) {
+  const metric = getFeedRuleEntry(FEED_RULE_METRICS, rule.metric);
+  const op = getFeedRuleEntry(FEED_RULE_OPS, rule.op);
+  const action = getFeedRuleEntry(FEED_RULE_ACTIONS, rule.action);
+  if (!metric || !op || !action) return '';
+
+  const subject = metric.fromAccounts ? 'posts from accounts' : 'posts';
+  return `${action.label} ${subject} with ${op.label} ${rule.threshold.toLocaleString('en-US')} ${metric.noun}`;
+}
+
 const TONES = [
   {
     id: 'generic',

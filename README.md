@@ -4,7 +4,7 @@
 
 <h1 align="center">X Buddy</h1>
 
-<p align="center">Keyword highlights, negative filtering, and AI reply drafts for X, powered by a model running on your own machine.</p>
+<p align="center">Keyword highlights, count-based feed rules, negative filtering, and AI reply drafts for X, powered by a model running on your own machine.</p>
 
 > **X Buddy is under active development.** It works, but it is rough around the edges and X changes their site a lot. Expect a broken selector now and then. If something stops working, open an issue and include what you see.
 
@@ -18,10 +18,11 @@
 
 - **Keyword glow.** Add words you care about and matching posts in your timeline glow in the color you pick (green by default). Useful when you want to spot a topic without reading every post.
 - **Negative keywords.** Add words you never want to see and matching posts are hidden from the timeline. Turn the whole list off whenever you want it back.
-- **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting and negative filtering.
+- **Feed rules.** Highlight or hide posts by the author's follower count, or by a post's comments, likes, or reposts. For example, hide posts from accounts with fewer than 1,000 followers, or highlight posts with more than 100 comments.
+- **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting, negative filtering, and feed rules.
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
-- **Backup.** Export keywords, toggles, glow color, tone prompts, and LLM settings to a JSON file, and import them on another browser.
+- **Backup.** Export keywords, toggles, glow color, feed rules, tone prompts, and LLM settings to a JSON file, and import them on another browser.
 - **Right-click capture.** Select a word or hashtag on X and add it to either list from the context menu, with a toast confirming the add.
 - **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt. You can edit the draft before posting.
 - **Local LLM settings.** Point Magic Reply at any OpenAI-compatible server on `localhost` or `127.0.0.1`, choose the model, and tune temperature, reply length, timeout, and thinking. An optional API key is supported.
@@ -29,7 +30,7 @@
 
 ## What you need
 
-- Chrome or another Chromium browser (tested on Chrome 156)
+- Chrome 111 or newer (tested on Chrome 156)
 - A local OpenAI-compatible server. The default is `http://localhost:8080`, but you can set the URL and port in **Settings → Local LLM**.
 - A model the server can load. The extension defaults to `gemma-4-E4B-it-QAT-Q4_0.gguf` and is tuned around it, but other chat models should work. Choose the model in Settings.
 
@@ -83,6 +84,20 @@ Both lists match whole words, case-insensitively, so `ai` will not match `rain`.
 
 Each list has its own search box, five-item pages, and a **Clear All** button. Search is case-insensitive, Clear All asks before deleting, keywords are capped at 100 characters, and duplicates are rejected regardless of case.
 
+### Highlight or hide posts by counts
+
+1. Click the X Buddy icon
+2. Under **Feed Rules**, choose **Hide** or **Highlight**
+3. Pick a count: **Followers**, **Comments**, **Likes**, or **Reposts**
+4. Choose **fewer than** or **more than** and type a number
+5. Click **Add Rule**
+
+Rules apply as you scroll and to posts already on the page. Add up to 20. A hide rule wins over a highlight rule, and rules are independent of the keyword lists: the Feed Rules toggle and the master toggle turn them off without deleting them.
+
+Comments are the replies X shows under a post. Comparisons are strict: `fewer than 1,000` does not match exactly 1,000. Thresholds compare the count X has loaded for the post; the rounded number shown on the post is only a fallback. Reposts are judged by the account whose post is shown (the original author), and image-only posts are still checked.
+
+X does not display follower counts on posts in the timeline, so the extension reads the count from the post data X already loaded on the page. If X does not expose a count for a post, that rule leaves the post alone. Comments, likes, and reposts fall back to the counts visible on the page if the post data is unavailable.
+
 ### Pause everything
 
 The toggle next to the X Buddy title is the master switch. Turning it off removes highlighting, hidden posts, and Magic Reply buttons without deleting any settings. Turn it back on to restore them.
@@ -101,7 +116,7 @@ Matching posts use the new color immediately, and the choice survives reloads.
 2. Click **Export All** to download `xbuddy-config.json`
 3. On another browser, click **Import** and pick that file
 
-A full config restore replaces the current keyword lists, toggles, glow color, tone prompts, and non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
+A full config restore replaces the current keyword lists, toggles, glow color, feed rules, tone prompts, and non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
 
 ### Add a keyword from the page
 
@@ -157,18 +172,19 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 | No glow | Check that the keyword is in the positive list and the positive toggle is on. Keywords match whole words only, so `ai` will not match `rain`. If the glow is there but hard to see, open **Settings** and pick a brighter color. |
 | A post I want to read is hidden | Check the negative list and the negative toggle. A negative keyword wins over a positive glow. Remove the word, or turn negative filtering off, to bring the post back. |
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
+| A feed rule does nothing | Refresh x.com if you just reloaded the extension — reloading an extension does not update tabs that are already open. Then check the **Feed Rules** toggle and the master toggle. Comparisons are strict, so `fewer than 1,000` does not match exactly 1,000. Posts whose count X does not expose are left alone. A hide rule wins over a highlight rule. |
+| Follower rules stopped working | X may have changed how it stores post data. Comments, likes, and reposts can still use the counts visible on the page; follower rules need the post data. Reload the extension and check for an update. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
 | Tone menu does not open | Reload the extension at `chrome://extensions` and refresh x.com. The menu is injected next to the reply send button on the classic layout. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
-| Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1 and 2 configs, or older files with `positive` and/or `negative` arrays. |
+| Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, and 3 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.4.0
+## What's new in 1.5.0
 
-- **Settings → Local LLM** lets you set the server URL, model, and optional API key.
-- **Fetch Models** lists the models your server exposes, and you can still type a model name manually.
-- Temperature, max reply tokens, timeout, and a thinking/reasoning toggle are now configurable.
-- LLM settings are included in Export All / Import, except the API key.
-- The default remains `http://localhost:8080` with `gemma-4-E4B-it-QAT-Q4_0.gguf`.
+- **Feed Rules** highlight or hide posts by follower count or by a post's comments, likes, and reposts.
+- Rules apply to posts already on the page and to posts loaded while you scroll.
+- Feed rules are included in Export All / Import.
+- No new permissions and no extra network requests.
 
 ## Status
 
@@ -176,7 +192,8 @@ X Buddy is an early build. What is done and what is next:
 
 - [x] Keyword highlighting
 - [x] Negative keyword filtering
-- [x] Master, positive, and negative toggles
+- [x] Feed rules for follower and engagement counts
+- [x] Master, positive, negative, and feed-rule toggles
 - [x] Keyword search, pagination, and clear-all controls
 - [x] Configurable glow color
 - [x] Full-config export/import
@@ -192,8 +209,9 @@ X started testing a new web layout for logged-in users in late 2026. It removes 
 ## Privacy
 
 - The extension asks for `storage` so it can remember your keywords, and `contextMenus` so you can right-click text to add it to a list.
+- Feed rules read follower, comment, like, and repost counts from the post data X already loaded. They add no permissions and make no extra requests.
 - It can talk to `x.com`, `twitter.com`, and the local LLM server you configure (`localhost` or `127.0.0.1` only). That is it.
-- Your keyword list, tone prompts, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports.
+- Your keyword lists, feed rules, tone prompts, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports.
 - Posts are sent to your own model server. Nothing is sent to us, and there is no analytics or remote code.
 
 ## Contributing

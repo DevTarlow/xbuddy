@@ -123,6 +123,7 @@
 
     .input-row input {
       flex: 1;
+      min-width: 0;
       padding: 8px 12px;
       border-radius: 6px;
       border: 1px solid #2a2d35;
@@ -143,6 +144,7 @@
 
     .input-row select {
       flex: 1;
+      min-width: 0;
       padding: 8px 12px;
       border-radius: 6px;
       border: 1px solid #2a2d35;
@@ -178,6 +180,7 @@
 
     .input-row button {
       padding: 8px 14px;
+      flex-shrink: 0;
       border-radius: 6px;
       border: none;
       background: #00ff41;
@@ -223,6 +226,10 @@
 
     .section-label.negative {
       color: #ff4646;
+    }
+
+    .section-label.feed {
+      color: #ffb84d;
     }
 
     .section-hint {
@@ -381,6 +388,17 @@
 
     .keyword-item .delete-btn:hover {
       color: #ff4646;
+    }
+
+    .rule-item {
+      align-items: flex-start;
+    }
+
+    .keyword-item .rule-text {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      line-height: 1.35;
     }
 
     .empty-state {
@@ -683,6 +701,35 @@
       </div>
       <div class="empty-state" id="negative-empty-state">No negative keywords yet.</div>
       <button class="btn-outline btn-outline-danger" id="clear-negative-btn">Clear All</button>
+    </section>
+
+    <hr class="separator" />
+
+    <section class="keyword-section" id="feed-rules-section">
+      <div class="section-header">
+        <label class="toggle" title="Enable feed rules">
+          <input type="checkbox" id="feed-rules-toggle" checked aria-label="Enable feed rules" />
+          <span class="slider"></span>
+        </label>
+        <div class="section-heading">
+          <div class="section-label feed">Feed Rules</div>
+          <div class="section-hint">Highlight or hide posts by follower or engagement counts.</div>
+        </div>
+      </div>
+      <div class="input-row">
+        <select id="feed-rule-action" aria-label="Rule action"></select>
+        <select id="feed-rule-metric" aria-label="Rule metric"></select>
+      </div>
+      <div class="input-row">
+        <select id="feed-rule-op" aria-label="Rule comparison"></select>
+        <input type="number" id="feed-rule-threshold" min="0" step="1" inputmode="numeric"
+          placeholder="Count" aria-label="Rule threshold" />
+      </div>
+      <button class="btn-primary" id="feed-rule-add-btn" style="margin-bottom: 8px;">Add Rule</button>
+      <div class="section-hint" style="margin-bottom: 8px;">Counts X does not expose are skipped. Hide wins over highlight.</div>
+      <ul class="keyword-list" id="feed-rule-list" role="list" aria-label="Feed rules"></ul>
+      <div class="empty-state" id="feed-rule-empty-state">No feed rules yet.</div>
+      <button class="btn-outline btn-outline-danger" id="clear-feed-rules-btn">Clear All</button>
     </section>
 
     <hr class="separator" />

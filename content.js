@@ -13,6 +13,16 @@ const DEFAULT_GLOW_COLOR = '#00ff41';
 const PROCESSED_ATTR = 'data-xb-processed';
 const MAGIC_REPLY_ATTR = 'data-magic-reply';
 
+// Feed-rule effects use their own classes so rule changes can be reverted
+// without touching keyword glow/hide state.
+const RULE_GLOW_CLASS = 'xb-rule-glow-post';
+const RULE_HIDDEN_CLASS = 'xb-rule-hidden-post';
+const METRICS_REQUEST_ATTR = 'data-xb-metrics-req';
+const METRICS_RETRIED_ATTR = 'data-xb-rules-retried';
+const METRICS_CHANNEL = 'xb-buddy-metrics';
+const METRICS_TIMEOUT_MS = 400;
+const METRICS_RETRY_MS = 500;
+
 // --- Selectors (cascading — first match wins) ---
 // X/Twitter uses data-testid attributes on tweet articles.
 // Feed items: article[data-testid="tweet"]
@@ -36,6 +46,11 @@ let positiveEnabled = true;
 let negativeEnabled = true;
 let enabled = true;
 let glowColor = DEFAULT_GLOW_COLOR;
+let feedRules = [];                    // normalized feed rules
+let feedRulesEnabled = true;
+let rulesGeneration = 0;               // drops late metrics replies after a reset
+let metricsCache = new WeakMap();      // article -> metrics
+let metricsPending = new WeakMap();    // article -> in-flight metrics promise
 let processedPosts = new WeakSet();    // prevent re-processing
 let processedDialogs = new WeakSet();  // prevent re-injecting buttons
 let observer = null;
@@ -136,11 +151,27 @@ function applyGlowColor(hex) {
   document.documentElement.style.setProperty('--xb-glow-rgb', `${r}, ${g}, ${b}`);
 }
 
+// Expose what the content script loaded and sees. These attributes are used
+// by the troubleshooting docs to tell a stale tab from a missing rule.
+function syncDebugAttributes() {
+  try {
+    const root = document.documentElement;
+    if (!root) return;
+    root.setAttribute('data-xb-buddy', chrome.runtime.getManifest().version);
+    root.setAttribute('data-xb-buddy-rules', String(feedRules.length));
+    root.setAttribute('data-xb-buddy-rules-enabled', String(feedRulesEnabled));
+  } catch (err) {
+    debug('Could not sync debug attributes', err);
+  }
+}
+
 async function loadSettings() {
   enabled = true;
   positiveEnabled = true;
   negativeEnabled = true;
   glowColor = DEFAULT_GLOW_COLOR;
+  feedRules = [];
+  feedRulesEnabled = true;
   try {
     const result = await chrome.storage.local.get([
       STORAGE_KEY,
@@ -149,6 +180,8 @@ async function loadSettings() {
       POSITIVE_ENABLED_KEY,
       NEGATIVE_ENABLED_KEY,
       GLOW_KEY,
+      FEED_RULES_KEY,
+      FEED_RULES_ENABLED_KEY,
     ]);
     keywordList = normalizeKeywordList(result[STORAGE_KEY] || []);
     negativeKeywordList = normalizeKeywordList(result[NEGATIVE_STORAGE_KEY] || []);
@@ -156,12 +189,16 @@ async function loadSettings() {
     positiveEnabled = result[POSITIVE_ENABLED_KEY] !== false;
     negativeEnabled = result[NEGATIVE_ENABLED_KEY] !== false;
     glowColor = normalizeGlowColor(result[GLOW_KEY]);
+    feedRules = normalizeFeedRules(result[FEED_RULES_KEY]);
+    feedRulesEnabled = result[FEED_RULES_ENABLED_KEY] !== false;
   } catch (err) {
     console.warn('[X Buddy] Could not load settings:', err);
     keywordList = [];
     negativeKeywordList = [];
+    feedRules = [];
   }
   applyGlowColor(glowColor);
+  syncDebugAttributes();
 }
 
 function listenForStorageChanges() {
@@ -213,6 +250,20 @@ function listenForStorageChanges() {
 
     if (changes[NEGATIVE_STORAGE_KEY] !== undefined) {
       negativeKeywordList = normalizeKeywordList(changes[NEGATIVE_STORAGE_KEY].newValue || []);
+      scheduleReprocess();
+    }
+
+    if (changes[FEED_RULES_ENABLED_KEY] !== undefined) {
+      feedRulesEnabled = changes[FEED_RULES_ENABLED_KEY].newValue !== false;
+      debug('Feed rules', feedRulesEnabled ? 'enabled' : 'disabled');
+      syncDebugAttributes();
+      scheduleReprocess();
+    }
+
+    if (changes[FEED_RULES_KEY] !== undefined) {
+      feedRules = normalizeFeedRules(changes[FEED_RULES_KEY].newValue);
+      debug('Feed rules updated:', feedRules);
+      syncDebugAttributes();
       scheduleReprocess();
     }
   });
@@ -457,6 +508,11 @@ function startSafetyChecks() {
 // ===================================================================
 
 function resetPostProcessing() {
+  // Invalidate in-flight metrics requests so a late reply cannot apply old rules.
+  rulesGeneration++;
+  metricsCache = new WeakMap();
+  metricsPending = new WeakMap();
+
   for (const el of document.querySelectorAll(`[${PROCESSED_ATTR}]`)) {
     el.removeAttribute(PROCESSED_ATTR);
   }
@@ -465,6 +521,18 @@ function resetPostProcessing() {
   }
   for (const el of document.querySelectorAll('.xb-hidden-post')) {
     el.classList.remove('xb-hidden-post');
+  }
+  for (const el of document.querySelectorAll(`.${RULE_GLOW_CLASS}`)) {
+    el.classList.remove(RULE_GLOW_CLASS);
+  }
+  for (const el of document.querySelectorAll(`.${RULE_HIDDEN_CLASS}`)) {
+    el.classList.remove(RULE_HIDDEN_CLASS);
+  }
+  for (const el of document.querySelectorAll(`[${METRICS_REQUEST_ATTR}]`)) {
+    el.removeAttribute(METRICS_REQUEST_ATTR);
+  }
+  for (const el of document.querySelectorAll(`[${METRICS_RETRIED_ATTR}]`)) {
+    el.removeAttribute(METRICS_RETRIED_ATTR);
   }
   processedPosts = new WeakSet();
 }
@@ -571,8 +639,10 @@ function processPost(container) {
 
   const { text: postText, fromBody } = extractPostBodyText(container);
   if (!postText.trim()) {
-    // Do not mark this one: X may still be mounting the tweet text.
+    // Do not mark this one: X may still be mounting the tweet text. Feed rules
+    // do not need text, so image-only posts can still be filtered.
     debug('processPost: could not extract text from', container);
+    scheduleFeedRules(container);
     return;
   }
 
@@ -599,6 +669,309 @@ function processPost(container) {
       container.classList.add('xb-glow-post');
       debug(`Highlighted post matching "${matchedPositive}": "${postText.substring(0, 60)}..."`);
     }
+  }
+
+  scheduleFeedRules(container);
+}
+
+// ===================================================================
+//  FEED RULES (follower / engagement thresholds)
+//  Metrics come from page-metrics.js in the MAIN world. If that bridge does
+//  not answer, comments/likes/reposts fall back to page-visible counts and
+//  followers stay unknown. Unknown counts never match a rule.
+// ===================================================================
+
+const ENGAGEMENT_BUTTON_SELECTORS = {
+  reply: ['[data-testid="reply"]', '[aria-label*="Reply" i]'],
+  retweet: [
+    '[data-testid="retweet"]',
+    '[data-testid="unretweet"]',
+    '[aria-label*="Repost" i]',
+    '[aria-label*="Retweet" i]',
+  ],
+  like: ['[data-testid="like"]', '[data-testid="unlike"]', '[aria-label*="Like" i]'],
+};
+
+const ENGAGEMENT_LABEL_PATTERNS = {
+  reply: /(\d[\d.,]*\s*[KMB]?)\s+repl(?:y|ies)/i,
+  retweet: /(\d[\d.,]*\s*[KMB]?)\s+(?:reposts?|retweets?)/i,
+  like: /(\d[\d.,]*\s*[KMB]?)\s+likes?/i,
+};
+
+const ENGAGEMENT_ZERO_LABELS = {
+  reply: /^(?:reply|replies)$/i,
+  retweet: /^(?:repost|retweet|reposts|retweets)$/i,
+  like: /^(?:like|likes)$/i,
+};
+
+function scheduleFeedRules(container) {
+  if (!enabled || !feedRulesEnabled || feedRules.length === 0) return;
+
+  const article = container.closest('article') || container;
+
+  // Quoted/nested articles are judged together with the outer post.
+  if (article.parentElement?.closest('article')) return;
+
+  const generation = rulesGeneration;
+
+  getPageMetrics(article).then((metrics) => {
+    if (!enabled || !feedRulesEnabled) return;
+    if (generation !== rulesGeneration) return;
+    if (!container.isConnected || !article.isConnected) return;
+
+    debug('Feed rule metrics', metrics);
+    applyRuleResult(container, metrics);
+
+    // X may not have mounted the post data on the first request. Retry once
+    // so a rule is not skipped for a post that is still rendering.
+    const needsRetry = feedRules.some((rule) => metrics[rule.metric] == null);
+    if (!needsRetry || article.hasAttribute(METRICS_RETRIED_ATTR)) return;
+
+    article.setAttribute(METRICS_RETRIED_ATTR, '1');
+    setTimeout(() => {
+      if (!enabled || !feedRulesEnabled) return;
+      if (generation !== rulesGeneration) return;
+      if (!container.isConnected) return;
+      metricsCache.delete(article);
+      metricsPending.delete(article);
+      scheduleFeedRules(container);
+    }, METRICS_RETRY_MS);
+  }).catch((err) => {
+    console.warn('[X Buddy] Feed rule evaluation failed:', err);
+  });
+}
+
+function getPageMetrics(article) {
+  const cache = metricsCache;
+  const pendingMap = metricsPending;
+
+  const cached = cache.get(article);
+  if (cached) return Promise.resolve(cached);
+
+  const pending = pendingMap.get(article);
+  if (pending) return pending;
+
+  const promise = requestPageMetrics(article).then((metrics) => {
+    // Write through the maps captured at request time so a reset cannot be
+    // polluted by a response that belongs to the previous settings generation.
+    cache.set(article, metrics);
+    pendingMap.delete(article);
+    return metrics;
+  });
+
+  pendingMap.set(article, promise);
+  return promise;
+}
+
+function requestPageMetrics(article) {
+  return new Promise((resolve) => {
+    if (!article || !article.isConnected || typeof window.postMessage !== 'function') {
+      resolve(readDomEngagement(article));
+      return;
+    }
+
+    const token = `xb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    let settled = false;
+    let timer = null;
+
+    const finish = (metrics) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+      if (article.isConnected) article.removeAttribute(METRICS_REQUEST_ATTR);
+
+      const normalized = normalizeMetrics(metrics);
+      fillMissingMetricsFromDom(article, normalized);
+      resolve(normalized);
+    };
+
+    const onMessage = (event) => {
+      if (event.source && event.source !== window) return;
+
+      const data = event.data;
+      if (!data || data.channel !== METRICS_CHANNEL || data.type !== 'result') return;
+      if (data.token !== token) return;
+
+      finish(data.metrics);
+    };
+
+    timer = setTimeout(() => finish(readDomEngagement(article)), METRICS_TIMEOUT_MS);
+    window.addEventListener('message', onMessage);
+    article.setAttribute(METRICS_REQUEST_ATTR, token);
+    window.postMessage({ channel: METRICS_CHANNEL, type: 'request', token }, location.origin);
+  });
+}
+
+function normalizeMetrics(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  return {
+    followers: normalizeMetricValue(source.followers),
+    comments: normalizeMetricValue(source.comments),
+    likes: normalizeMetricValue(source.likes),
+    reposts: normalizeMetricValue(source.reposts),
+  };
+}
+
+function normalizeMetricValue(value) {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num);
+}
+
+// The page helper may not expose every count (for example, a fiber shape
+// without reply_count). Fill gaps from the counts visible on the post so
+// comment/like/repost rules still work. Followers have no timeline fallback.
+function fillMissingMetricsFromDom(article, metrics) {
+  if (metrics.comments != null && metrics.likes != null && metrics.reposts != null) return;
+
+  const dom = readDomEngagement(article);
+  if (metrics.comments == null && dom.comments != null) metrics.comments = dom.comments;
+  if (metrics.likes == null && dom.likes != null) metrics.likes = dom.likes;
+  if (metrics.reposts == null && dom.reposts != null) metrics.reposts = dom.reposts;
+}
+
+function readDomEngagement(article) {
+  const metrics = { followers: null, comments: null, likes: null, reposts: null };
+  if (!article || typeof article.querySelector !== 'function') return metrics;
+
+  const group = findEngagementGroup(article);
+  const fromGroupLabel = parseEngagementGroupLabel(group?.getAttribute('aria-label') || '');
+  if (fromGroupLabel.comments != null) metrics.comments = fromGroupLabel.comments;
+  if (fromGroupLabel.reposts != null) metrics.reposts = fromGroupLabel.reposts;
+  if (fromGroupLabel.likes != null) metrics.likes = fromGroupLabel.likes;
+
+  if (metrics.comments == null) metrics.comments = readEngagementButton(article, 'reply');
+  if (metrics.reposts == null) metrics.reposts = readEngagementButton(article, 'retweet');
+  if (metrics.likes == null) metrics.likes = readEngagementButton(article, 'like');
+
+  return metrics;
+}
+
+function findEngagementGroup(article) {
+  const groups = article.querySelectorAll('[role="group"]');
+
+  for (const group of groups) {
+    if (group.querySelector(
+      '[data-testid="reply"], [data-testid="like"], [aria-label*="Reply" i], [aria-label*="Like" i]'
+    )) {
+      return group;
+    }
+  }
+
+  return article.querySelector('[role="group"]');
+}
+
+function parseEngagementGroupLabel(label) {
+  const out = { comments: null, likes: null, reposts: null };
+  if (!label) return out;
+
+  if (ENGAGEMENT_LABEL_PATTERNS.reply.test(label)) {
+    out.comments = parseCountText(label.match(ENGAGEMENT_LABEL_PATTERNS.reply)[1]);
+  }
+  if (ENGAGEMENT_LABEL_PATTERNS.retweet.test(label)) {
+    out.reposts = parseCountText(label.match(ENGAGEMENT_LABEL_PATTERNS.retweet)[1]);
+  }
+  if (ENGAGEMENT_LABEL_PATTERNS.like.test(label)) {
+    out.likes = parseCountText(label.match(ENGAGEMENT_LABEL_PATTERNS.like)[1]);
+  }
+
+  return out;
+}
+
+function readEngagementButton(scope, kind) {
+  for (const selector of ENGAGEMENT_BUTTON_SELECTORS[kind] || []) {
+    const button = scope.querySelector(selector);
+    if (!button) continue;
+
+    // The visible counter is the least ambiguous signal when present. Fall back
+    // to the aria-label only when there is no numeric span (for example zero).
+    const visible = readVisibleCount(button);
+    if (visible != null) return visible;
+
+    const label = button.getAttribute('aria-label') || '';
+    const fromLabel = parseEngagementButtonLabel(label, kind);
+    if (fromLabel != null) return fromLabel;
+  }
+
+  return null;
+}
+
+function parseEngagementButtonLabel(label, kind) {
+  const text = String(label || '').trim();
+  if (!text) return null;
+
+  const pattern = ENGAGEMENT_LABEL_PATTERNS[kind];
+  const match = text.match(pattern);
+  if (match) return parseCountText(match[1]);
+
+  if (ENGAGEMENT_ZERO_LABELS[kind].test(text)) return 0;
+  return null;
+}
+
+function readVisibleCount(button) {
+  for (const span of button.querySelectorAll('span')) {
+    const text = (span.textContent || '').trim();
+    if (!text || !/^\d[\d.,]*\s*[KMB]?$/i.test(text)) continue;
+    const value = parseCountText(text);
+    if (value != null) return value;
+  }
+
+  // Some layouts render the counter in a div rather than a span. The action
+  // button itself only contains its icon and this number.
+  const text = (button.textContent || '').trim();
+  const match = text.match(/(\d[\d.,]*\s*[KMB]?)/i);
+  return match ? parseCountText(match[1]) : null;
+}
+
+function parseCountText(text) {
+  if (typeof text !== 'string') return null;
+
+  const normalized = text.trim().replace(/\s+/g, '').replace(/,/g, '');
+  const match = normalized.match(/^(\d+(?:\.\d+)?)([KMB])?$/i);
+  if (!match) return null;
+
+  const base = Number(match[1]);
+  if (!Number.isFinite(base)) return null;
+
+  const suffix = (match[2] || '').toUpperCase();
+  const multiplier = suffix === 'K' ? 1e3 : suffix === 'M' ? 1e6 : suffix === 'B' ? 1e9 : 1;
+  return Math.round(base * multiplier);
+}
+
+function applyRuleResult(container, metrics) {
+  let hideRule = null;
+  let highlightRule = null;
+
+  for (const rule of feedRules) {
+    const value = metrics[rule.metric];
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+    if (!matchesFeedRule(rule, value)) continue;
+
+    if (rule.action === 'hide') {
+      hideRule = rule;
+      break;
+    }
+    if (!highlightRule) highlightRule = rule;
+  }
+
+  const hideTarget = getHideTarget(container);
+
+  container.classList.remove(RULE_GLOW_CLASS);
+  if (hideTarget) hideTarget.classList.remove(RULE_HIDDEN_CLASS);
+  if (container !== hideTarget) container.classList.remove(RULE_HIDDEN_CLASS);
+
+  if (hideRule && hideTarget) {
+    hideTarget.classList.add(RULE_HIDDEN_CLASS);
+    debug('Hid post by feed rule', hideRule, metrics);
+    return;
+  }
+
+  if (highlightRule) {
+    container.classList.add(RULE_GLOW_CLASS);
+    debug('Highlighted post by feed rule', highlightRule, metrics);
+  } else if (!hideRule) {
+    debug('No feed rule matched', metrics);
   }
 }
 

@@ -42,6 +42,16 @@ const negativePrevBtn = document.getElementById('negative-prev-btn');
 const negativeNextBtn = document.getElementById('negative-next-btn');
 const negativePageInfo = document.getElementById('negative-page-info');
 const clearNegativeBtn = document.getElementById('clear-negative-btn');
+const feedRulesSection = document.getElementById('feed-rules-section');
+const feedRulesToggle = document.getElementById('feed-rules-toggle');
+const feedRuleAction = document.getElementById('feed-rule-action');
+const feedRuleMetric = document.getElementById('feed-rule-metric');
+const feedRuleOp = document.getElementById('feed-rule-op');
+const feedRuleThreshold = document.getElementById('feed-rule-threshold');
+const feedRuleAddBtn = document.getElementById('feed-rule-add-btn');
+const feedRuleListEl = document.getElementById('feed-rule-list');
+const feedRuleEmptyState = document.getElementById('feed-rule-empty-state');
+const clearFeedRulesBtn = document.getElementById('clear-feed-rules-btn');
 const settingsToggle = document.getElementById('settings-toggle');
 const settingsArrow = document.getElementById('settings-arrow');
 const settingsBody = document.getElementById('settings-body');
@@ -79,6 +89,8 @@ let positivePage = 1;
 let negativePage = 1;
 let positiveSearchQuery = '';
 let negativeSearchQuery = '';
+let feedRules = [];
+let feedRulesEnabled = true;
 let glowColor = DEFAULT_GLOW_COLOR;
 let settingsOpen = false;
 let llmSettings = { ...LLM_DEFAULTS };
@@ -344,6 +356,8 @@ async function loadState() {
       POSITIVE_ENABLED_KEY,
       NEGATIVE_ENABLED_KEY,
       GLOW_KEY,
+      FEED_RULES_KEY,
+      FEED_RULES_ENABLED_KEY,
       SETTINGS_OPEN_KEY,
       LLM_SETTINGS_KEY,
     ]);
@@ -353,6 +367,8 @@ async function loadState() {
     positiveEnabled = result[POSITIVE_ENABLED_KEY] !== false;
     negativeEnabled = result[NEGATIVE_ENABLED_KEY] !== false;
     glowColor = isValidHexColor(result[GLOW_KEY]) ? result[GLOW_KEY] : DEFAULT_GLOW_COLOR;
+    feedRules = normalizeFeedRules(result[FEED_RULES_KEY]);
+    feedRulesEnabled = result[FEED_RULES_ENABLED_KEY] !== false;
     settingsOpen = result[SETTINGS_OPEN_KEY] === true;
     llmSettings = normalizeLlmSettings(result[LLM_SETTINGS_KEY]);
   } catch (e) {
@@ -499,6 +515,139 @@ function renderNegativeKeywords() {
   renderList(negativeConfig());
 }
 
+// --- Feed rules ---
+function fillRuleSelect(select, items) {
+  select.innerHTML = '';
+  for (const item of items) {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.textContent = item.label;
+    select.appendChild(option);
+  }
+}
+
+function populateFeedRuleSelectors() {
+  fillRuleSelect(feedRuleAction, FEED_RULE_ACTIONS);
+  fillRuleSelect(feedRuleMetric, FEED_RULE_METRICS);
+  fillRuleSelect(feedRuleOp, FEED_RULE_OPS);
+}
+
+function renderFeedRules() {
+  feedRuleListEl.innerHTML = '';
+
+  if (feedRules.length === 0) {
+    feedRuleEmptyState.style.display = 'block';
+    feedRuleListEl.style.display = 'none';
+    return;
+  }
+
+  feedRuleEmptyState.style.display = 'none';
+  feedRuleListEl.style.display = '';
+
+  feedRules.forEach((rule, index) => {
+    const label = formatFeedRule(rule);
+
+    const li = document.createElement('li');
+    li.className = 'keyword-item rule-item';
+
+    const span = document.createElement('span');
+    span.className = 'keyword-text rule-text';
+    span.textContent = label;
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'delete-btn';
+    delBtn.textContent = '×';
+    delBtn.title = `Remove rule: ${label}`;
+    delBtn.addEventListener('click', () => deleteFeedRule(index));
+
+    li.appendChild(span);
+    li.appendChild(delBtn);
+    feedRuleListEl.appendChild(li);
+  });
+}
+
+async function addFeedRule() {
+  const raw = feedRuleThreshold.value.trim();
+  const threshold = Number(raw);
+
+  if (!raw || !Number.isInteger(threshold) ||
+      threshold < FEED_RULE_LIMITS.thresholdMin ||
+      threshold > FEED_RULE_LIMITS.thresholdMax) {
+    flashSaveFeedback(feedRuleAddBtn, 'Invalid count');
+    showToast(
+      `Enter a whole number from 0 to ${FEED_RULE_LIMITS.thresholdMax.toLocaleString('en-US')}`,
+      'error'
+    );
+    feedRuleThreshold.focus();
+    return;
+  }
+
+  const rule = normalizeFeedRule({
+    metric: feedRuleMetric.value,
+    op: feedRuleOp.value,
+    action: feedRuleAction.value,
+    threshold,
+  });
+
+  if (!rule) {
+    flashSaveFeedback(feedRuleAddBtn, 'Invalid rule');
+    showToast('Could not create that rule', 'error');
+    return;
+  }
+
+  if (feedRules.length >= FEED_RULE_LIMITS.maxRules) {
+    flashSaveFeedback(feedRuleAddBtn, 'Rule limit');
+    showToast(`Up to ${FEED_RULE_LIMITS.maxRules} feed rules`, 'error');
+    return;
+  }
+
+  const key = feedRuleKey(rule);
+  if (feedRules.some((existing) => feedRuleKey(existing) === key)) {
+    flashSaveFeedback(feedRuleAddBtn, 'Already exists');
+    showToast('That rule already exists', 'error');
+    return;
+  }
+
+  feedRules.push(rule);
+  if (!(await saveFlag(FEED_RULES_KEY, feedRules))) {
+    feedRules.pop();
+    return;
+  }
+
+  feedRuleThreshold.value = '';
+  renderFeedRules();
+  showToast('Feed rule added');
+}
+
+async function deleteFeedRule(index) {
+  if (index < 0 || index >= feedRules.length) return;
+
+  const removed = feedRules.splice(index, 1)[0];
+  if (!(await saveFlag(FEED_RULES_KEY, feedRules))) {
+    feedRules.splice(index, 0, removed);
+    return;
+  }
+
+  renderFeedRules();
+  showToast('Feed rule removed');
+}
+
+async function clearFeedRules() {
+  if (feedRules.length === 0) return;
+  if (!confirm('Delete all feed rules?')) return;
+
+  const previous = feedRules.slice();
+  feedRules.length = 0;
+
+  if (!(await saveFlag(FEED_RULES_KEY, feedRules))) {
+    feedRules.push(...previous);
+    return;
+  }
+
+  renderFeedRules();
+  showToast('All feed rules cleared');
+}
+
 // --- Add keyword ---
 async function addKeyword(input, list, storageKey, addButton, renderFn, setPage, listLabel) {
   const raw = input.value.trim();
@@ -556,13 +705,15 @@ function prepareImportedKeywords(arr) {
 function buildConfig() {
   return {
     app: 'xbuddy',
-    version: 2,
+    version: 3,
     positive: keywords,
     negative: negativeKeywords,
     positiveEnabled,
     negativeEnabled,
     enabled,
     glowColor,
+    feedRules: feedRules.map((rule) => ({ ...rule })),
+    feedRulesEnabled,
     tonePrompts: { ...tonePrompts },
     llm: {
       baseUrl: llmSettings.baseUrl,
@@ -592,6 +743,7 @@ function refreshFromState() {
   masterToggle.checked = enabled;
   positiveToggle.checked = positiveEnabled;
   negativeToggle.checked = negativeEnabled;
+  feedRulesToggle.checked = feedRulesEnabled;
   glowColorInput.value = glowColor;
   applyLlmSettingsToForm();
   setLlmFeedback('');
@@ -604,12 +756,15 @@ function refreshFromState() {
   negativeSearchClear.classList.remove('visible');
   positivePage = 1;
   negativePage = 1;
+  feedRuleThreshold.value = '';
 
   applyMasterState();
   applyPositiveState();
   applyNegativeState();
+  applyFeedRulesState();
   renderKeywords();
   renderNegativeKeywords();
+  renderFeedRules();
   updateToneEditor();
 }
 
@@ -687,6 +842,12 @@ async function importFullConfig(data) {
   if (typeof data.negativeEnabled === 'boolean') toSet[NEGATIVE_ENABLED_KEY] = data.negativeEnabled;
   if (typeof data.enabled === 'boolean') toSet[ENABLED_KEY] = data.enabled;
   if (isValidHexColor(data.glowColor)) toSet[GLOW_KEY] = data.glowColor;
+  if (Array.isArray(data.feedRules)) {
+    toSet[FEED_RULES_KEY] = normalizeFeedRules(data.feedRules);
+  }
+  if (typeof data.feedRulesEnabled === 'boolean') {
+    toSet[FEED_RULES_ENABLED_KEY] = data.feedRulesEnabled;
+  }
   if (data.tonePrompts && typeof data.tonePrompts === 'object') {
     for (const tone of TONES) {
       const prompt = data.tonePrompts[tone.id];
@@ -721,6 +882,10 @@ async function importFullConfig(data) {
   if (toSet[POSITIVE_ENABLED_KEY] !== undefined) positiveEnabled = toSet[POSITIVE_ENABLED_KEY];
   if (toSet[NEGATIVE_ENABLED_KEY] !== undefined) negativeEnabled = toSet[NEGATIVE_ENABLED_KEY];
   if (toSet[GLOW_KEY]) glowColor = toSet[GLOW_KEY];
+  if (toSet[FEED_RULES_KEY]) feedRules = [...toSet[FEED_RULES_KEY]];
+  if (toSet[FEED_RULES_ENABLED_KEY] !== undefined) {
+    feedRulesEnabled = toSet[FEED_RULES_ENABLED_KEY];
+  }
   if (data.tonePrompts && typeof data.tonePrompts === 'object') {
     for (const tone of TONES) {
       const prompt = data.tonePrompts[tone.id];
@@ -831,6 +996,7 @@ function applyMasterState() {
   controls.classList.toggle('feature-disabled', !enabled);
   positiveToggle.disabled = !enabled;
   negativeToggle.disabled = !enabled;
+  feedRulesToggle.disabled = !enabled;
 }
 
 function applyPositiveState() {
@@ -839,6 +1005,10 @@ function applyPositiveState() {
 
 function applyNegativeState() {
   negativeSection.classList.toggle('feature-disabled', !negativeEnabled);
+}
+
+function applyFeedRulesState() {
+  feedRulesSection.classList.toggle('feature-disabled', !feedRulesEnabled);
 }
 
 function applySettingsState() {
@@ -902,6 +1072,25 @@ negativeToggle.addEventListener('change', async () => {
     negativeToggle.checked = negativeEnabled;
   }
 });
+
+feedRulesToggle.addEventListener('change', async () => {
+  const next = feedRulesToggle.checked;
+  if (await saveFlag(FEED_RULES_ENABLED_KEY, next)) {
+    feedRulesEnabled = next;
+    applyFeedRulesState();
+    showToast(feedRulesEnabled ? 'Feed rules enabled' : 'Feed rules disabled');
+  } else {
+    feedRulesToggle.checked = feedRulesEnabled;
+  }
+});
+
+feedRuleAddBtn.addEventListener('click', addFeedRule);
+
+feedRuleThreshold.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') feedRuleAddBtn.click();
+});
+
+clearFeedRulesBtn.addEventListener('click', clearFeedRules);
 
 addBtn.addEventListener('click', async () => {
   if (!keywordInput.value.trim()) return;
@@ -1067,16 +1256,20 @@ importInput.addEventListener('change', handleImportFile);
   await loadTonePrompts();
   populateToneSelector();
   updateToneEditor();
+  populateFeedRuleSelectors();
   masterToggle.checked = enabled;
   positiveToggle.checked = positiveEnabled;
   negativeToggle.checked = negativeEnabled;
+  feedRulesToggle.checked = feedRulesEnabled;
   glowColorInput.value = glowColor;
   applyLlmSettingsToForm();
   applyMasterState();
   applyPositiveState();
   applyNegativeState();
+  applyFeedRulesState();
   applySettingsState();
   renderKeywords();
   renderNegativeKeywords();
+  renderFeedRules();
   checkLlmStatus();
 })();
