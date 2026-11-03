@@ -232,12 +232,6 @@ X started testing a new web layout for logged-in users in late 2026. It removes 
 - Your keyword lists, feed rules, tone prompts, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports.
 - Posts are sent to your own model server. Nothing is sent to us, and there is no analytics or remote code.
 
-## Contributing
-
-Issues and pull requests are welcome. If you are changing the extension itself, read `AGENTS.md` first. It covers the project layout, the current selectors, and the development workflow.
-
-Small ask: keep pull requests focused. One fix or feature per PR makes review a lot easier.
-
 ## License
 
 MIT. See `LICENSE`.
