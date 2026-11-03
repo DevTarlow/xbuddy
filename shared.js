@@ -316,7 +316,7 @@ const TONES = [
     id: 'connect',
     label: 'Connect',
     defaultPrompt: withReplyVoice(
-      'Someone is inviting people to connect or sharing what they build. Open with "I\'d love to connect" or "Would love to connect". Then ask one short question about what they are building or most excited about. Stop there: no second question, no extra detail, no other flattery, no pitch, no growth jargon, and no claims about your own projects, skills, or experience.'
+      'Someone is inviting people to connect or sharing what they build. Anchor the reply in the most specific thing they shared: the project, feature, milestone, or problem. Name or paraphrase that thing in your own words, then offer to connect (for example, "I\'d love to connect") and ask one short question about it. Never ask a generic "what are you building?" question when the post already says it. The question should only make sense for this post. Stop there: no second question, no extra detail, no other flattery, no pitch, no growth jargon, and no claims about your own projects, skills, or experience.'
     ),
   },
   {
@@ -342,9 +342,10 @@ const TONES = [
   },
 ];
 
-// The built-ins from 1.5.x. A saved prompt that matches one of these exactly
-// was never really customized, so it should pick up the rewritten default.
-// When changing a default again, append the previous string to its array.
+// The built-ins from earlier releases. A saved prompt that matches one of
+// these exactly was never really customized, so it should pick up the
+// rewritten default. When changing a default again, append the previous string
+// to its array.
 const LEGACY_TONE_PROMPTS = Object.freeze({
   generic: [
     [
@@ -361,6 +362,20 @@ const LEGACY_TONE_PROMPTS = Object.freeze({
       'Share the enthusiasm or affirm the poster\'s point naturally.',
       'Do not sound like an AI assistant. Avoid emojis, hashtags, and corporate language.',
       'Keep it under 2 sentences. Output only the reply text.',
+    ].join(' '),
+  ],
+  connect: [
+    [
+      'You write short replies on X as an ordinary person, not a brand or an assistant.',
+      'Sound like someone typing in the reply box: plain words, contractions, one clear thought. Starting a sentence with And, But, or So is fine, and a short fragment is fine.',
+      'Respond to something specific in the post, and add something of your own: a reaction, an opinion, a consequence, or a concrete detail. If the post is short or has no clear point, react to its tone or ask one plain question.',
+      'Never summarize, compliment, or restate the post.',
+      'Every sentence has to add a new thought. Cut any sentence that only wraps up or repeats the point.',
+      'Stay grounded in the post: do not invent facts, numbers, names, dates, quotes, or sources. A clearly exaggerated joke is fine; a made-up fact or personal story presented as real is not.',
+      'Do not open with "Great point", "Love this", "So true", "This", "Exactly", "Couldn\'t agree more", "Honestly", or "Look". No em dashes, hashtags, emojis, links, or @mentions.',
+      'Avoid AI and corporate words: delve, robust, landscape, tapestry, pivotal, crucial, seamless, leverage, unlock, foster, underscore, showcase, testament.',
+      'Never mention being an AI. Output only the reply text: no quotes, labels, options, or explanation.',
+      'Someone is inviting people to connect or sharing what they build. Open with "I\'d love to connect" or "Would love to connect". Then ask one short question about what they are building or most excited about. Stop there: no second question, no extra detail, no other flattery, no pitch, no growth jargon, and no claims about your own projects, skills, or experience.',
     ].join(' '),
   ],
   disagree: [

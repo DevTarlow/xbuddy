@@ -163,7 +163,7 @@ The Server URL must be `localhost` or `127.0.0.1`. Include the port; the extensi
 
 The reply goes into the composer, not straight to X. You always get the final say.
 
-**Connect** is for posts that invite people to connect or ask what you are building. It offers to connect and asks one short question about their project, without pitching or making up details about your work. You can edit the draft to add your own project before posting.
+**Connect** is for posts that invite people to connect or ask what you are building. It names the specific project or detail from the post, offers to connect, and asks one short question about that detail, without pitching or making up details about your work. You can edit the draft to add your own project before posting.
 
 ### Set reply length
 
@@ -213,7 +213,7 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 ## What's new in 1.6.0
 
 - Reply tone prompts were rewritten to sound like a person replying on X: specific, short, and free of AI filler.
-- A new **Connect** tone drafts warm replies to posts that invite connection or ask what you are building. It offers to connect and asks one short question, with no pitch and no invented details.
+- A new **Connect** tone drafts warm replies to posts that invite connection or ask what you are building. It names a specific detail from the post, offers to connect, and asks one short question about it, with no pitch and no invented details.
 - A new **Reply Length** slider in **Settings → Reply Tones** sets how wordy Magic Reply drafts are, from one-liners to longer replies. The far-right **Auto** setting lets the model choose the length from the post instead of a fixed cap. It applies to every tone and overrides sentence limits inside a saved prompt.
 - Reply length is included in Export All / Import.
 - Feed rules can now match a **between** range with a minimum and maximum, and a new **Following** count joins Followers.
