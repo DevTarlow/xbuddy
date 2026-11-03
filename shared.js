@@ -283,6 +283,13 @@ const TONES = [
     ),
   },
   {
+    id: 'connect',
+    label: 'Connect',
+    defaultPrompt: withReplyVoice(
+      'Someone is inviting people to connect or sharing what they build. Open with "I\'d love to connect" or "Would love to connect". Then ask one short question about what they are building or most excited about. Stop there: no second question, no extra detail, no other flattery, no pitch, no growth jargon, and no claims about your own projects, skills, or experience.'
+    ),
+  },
+  {
     id: 'disagree',
     label: 'Disagree',
     defaultPrompt: withReplyVoice(

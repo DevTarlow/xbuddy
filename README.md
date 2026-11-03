@@ -24,7 +24,7 @@
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
 - **Backup.** Export keywords, toggles, glow color, feed rules, reply length, tone prompts, and LLM settings to a JSON file, and import them on another browser.
 - **Right-click capture.** Select a word or hashtag on X and add it to either list from the context menu, with a toast confirming the add.
-- **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt, and a Reply Length slider keeps drafts short, lets them run longer, or hands the length choice to the model. You can edit the draft before posting.
+- **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Connect, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt, and a Reply Length slider keeps drafts short, lets them run longer, or hands the length choice to the model. You can edit the draft before posting.
 - **Local LLM settings.** Point Magic Reply at any OpenAI-compatible server on `localhost` or `127.0.0.1`, choose the model, and tune temperature, max reply tokens, timeout, and thinking. An optional API key is supported.
 - **Stays local.** No accounts and no tracking. Most local servers need no API key; if yours does, it stays in Chrome's local storage. Your keywords and posts go to the model on your computer and nowhere else.
 
@@ -155,11 +155,13 @@ The Server URL must be `localhost` or `127.0.0.1`. Include the port; the extensi
 
 1. Open a post's reply dialog, or open the post detail page
 2. Click **✨ Magic Reply** next to the send button
-3. Choose a tone: **Generic**, **Agree**, **Disagree**, **Funny**, or **Informative**
+3. Choose a tone: **Generic**, **Agree**, **Connect**, **Disagree**, **Funny**, or **Informative**
 4. Wait a moment while your model writes
 5. Edit the draft if you want, then post it
 
 The reply goes into the composer, not straight to X. You always get the final say.
+
+**Connect** is for posts that invite people to connect or ask what you are building. It offers to connect and asks one short question about their project, without pitching or making up details about your work. You can edit the draft to add your own project before posting.
 
 ### Set reply length
 
@@ -209,6 +211,7 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 ## What's new in 1.6.0
 
 - Reply tone prompts were rewritten to sound like a person replying on X: specific, short, and free of AI filler.
+- A new **Connect** tone drafts warm replies to posts that invite connection or ask what you are building. It offers to connect and asks one short question, with no pitch and no invented details.
 - A new **Reply Length** slider in **Settings → Reply Tones** sets how wordy Magic Reply drafts are, from one-liners to longer replies. The far-right **Auto** setting lets the model choose the length from the post instead of a fixed cap. It applies to every tone and overrides sentence limits inside a saved prompt.
 - Reply length is included in Export All / Import.
 - No new permissions and no extra network requests.
@@ -226,7 +229,7 @@ X Buddy is an early build. What is done and what is next:
 - [x] Full-config export/import
 - [x] Right-click keyword capture
 - [x] Magic Reply with a local model
-- [x] Five reply tones with editable prompts
+- [x] Six reply tones with editable prompts
 - [x] Adjustable reply length
 - [x] LLM settings for the server URL, model, and generation options
 - [ ] Support X's new web layout
