@@ -6,7 +6,7 @@
 
 <p align="center">Keyword highlights, negative filtering, and AI reply drafts for X, powered by a model running on your own machine.</p>
 
-> **X Buddy is still under development.** It works, but it is rough around the edges and X changes their site a lot. Expect a broken selector now and then. If something stops working, open an issue and include what you see.
+> **X Buddy is under active development.** It works, but it is rough around the edges and X changes their site a lot. Expect a broken selector now and then. If something stops working, open an issue and include what you see.
 
 <p align="center">
   <img src="screenshot.png" width="340" alt="X Buddy popup showing positive and negative keyword lists and their toggles" />
