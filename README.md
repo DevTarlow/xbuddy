@@ -98,6 +98,12 @@ Comments are the replies X shows under a post. Comparisons are strict: `fewer th
 
 X does not display follower counts on posts in the timeline, so the extension reads the count from the post data X already loaded on the page. If X does not expose a count for a post, that rule leaves the post alone. Comments, likes, and reposts fall back to the counts visible on the page if the post data is unavailable.
 
+<p align="center">
+  <img src="feed-rules.png" width="340" alt="X Buddy Feed Rules section with a hide rule for posts with more than 50 comments" />
+</p>
+
+<p align="center"><em>Feed Rules: choose an action, a metric, a comparison, and a count.</em></p>
+
 ### Pause everything
 
 The toggle next to the X Buddy title is the master switch. Turning it off removes highlighting, hidden posts, and Magic Reply buttons without deleting any settings. Turn it back on to restore them.
@@ -139,6 +145,12 @@ The status dot next to the title shows whether the saved server is reachable. Ma
 
 The Server URL must be `localhost` or `127.0.0.1`. Include the port; the extension adds `/v1` for you. If your server does not expose `/v1/models`, **Fetch Models** will fail, but you can still type the model name and save. The API key is stored in Chrome's local storage and is never included in exports.
 
+<p align="center">
+  <img src="llm-settings.png" width="340" alt="X Buddy Settings showing the Local LLM server URL, model, and generation options" />
+</p>
+
+<p align="center"><em>Settings → Local LLM: server, model, and generation options.</em></p>
+
 ### Draft a reply
 
 1. Open a post's reply dialog, or open the post detail page
@@ -157,6 +169,12 @@ The reply goes into the composer, not straight to X. You always get the final sa
 4. Click **Restore Default** to put the built-in prompt back
 
 Each tone's prompt is saved separately. The Magic Reply menu uses whatever prompt is saved for the tone you pick.
+
+<p align="center">
+  <img src="glow-and-reply-tones.png" width="340" alt="X Buddy Settings showing the glow color picker, reply tone prompt editor, and export/import controls" />
+</p>
+
+<p align="center"><em>Settings: glow color, per-tone reply prompts, and backup controls.</em></p>
 
 ## Troubleshooting
 
