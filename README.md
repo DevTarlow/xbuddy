@@ -8,6 +8,12 @@
 
 > **X Buddy is still under development.** It works, but it is rough around the edges and X changes their site a lot. Expect a broken selector now and then. If something stops working, open an issue and include what you see.
 
+<p align="center">
+  <img src="screenshot.png" width="340" alt="X Buddy popup showing positive and negative keyword lists and their toggles" />
+</p>
+
+<p align="center"><em>The popup, with positive and negative keyword lists.</em></p>
+
 ## What it does
 
 - **Keyword glow.** Add words you care about and matching posts in your timeline glow in the color you pick (green by default). Useful when you want to spot a topic without reading every post.
