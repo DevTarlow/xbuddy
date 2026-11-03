@@ -195,6 +195,8 @@ function updateReplyLengthReadout(level) {
 }
 
 function applyReplyLengthToForm() {
+  replyLengthInput.min = String(REPLY_LENGTH_LEVELS[0].level);
+  replyLengthInput.max = String(REPLY_LENGTH_LEVELS[REPLY_LENGTH_LEVELS.length - 1].level);
   replyLengthInput.value = String(replyLength);
   updateReplyLengthReadout(replyLength);
 }

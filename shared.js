@@ -218,6 +218,7 @@ const REPLY_LENGTH_LEVELS = Object.freeze([
   { level: 3, label: 'Balanced', maxSentences: 2, maxWords: 25, detail: 'up to 2 sentences, 25 words max' },
   { level: 4, label: 'Detailed', maxSentences: 3, maxWords: 38, detail: 'up to 3 sentences, 38 words max' },
   { level: 5, label: 'Long', maxSentences: 4, maxWords: 50, detail: 'up to 4 sentences, 50 words max' },
+  { level: 6, label: 'Auto', auto: true, detail: 'the model chooses based on the post' },
 ]);
 
 function normalizeReplyLength(raw) {
@@ -239,6 +240,10 @@ function formatReplyLength(level) {
 
 function buildReplyLengthInstruction(level) {
   const spec = getReplyLengthLevel(level);
+  if (spec.auto) {
+    return 'Length: choose the best length for this post. Keep it brief unless the post needs more. Do not pad, and do not cut a real thought short. This overrides any length limit in the tone instructions. Reply with only the reply text.';
+  }
+
   const sentences = spec.maxSentences === 1 ? '1 sentence' : `${spec.maxSentences} sentences`;
   return `Length: at most ${sentences} and ${spec.maxWords} words. This overrides any length limit in the tone instructions. Reply with only the reply text.`;
 }

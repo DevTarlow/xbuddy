@@ -24,7 +24,7 @@
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
 - **Backup.** Export keywords, toggles, glow color, feed rules, reply length, tone prompts, and LLM settings to a JSON file, and import them on another browser.
 - **Right-click capture.** Select a word or hashtag on X and add it to either list from the context menu, with a toast confirming the add.
-- **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt and a Reply Length slider keeps drafts short or lets them run longer. You can edit the draft before posting.
+- **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt, and a Reply Length slider keeps drafts short, lets them run longer, or hands the length choice to the model. You can edit the draft before posting.
 - **Local LLM settings.** Point Magic Reply at any OpenAI-compatible server on `localhost` or `127.0.0.1`, choose the model, and tune temperature, max reply tokens, timeout, and thinking. An optional API key is supported.
 - **Stays local.** No accounts and no tracking. Most local servers need no API key; if yours does, it stays in Chrome's local storage. Your keywords and posts go to the model on your computer and nowhere else.
 
@@ -164,10 +164,10 @@ The reply goes into the composer, not straight to X. You always get the final sa
 ### Set reply length
 
 1. Click the X Buddy icon and expand **Settings**
-2. Under **Reply Length**, drag the slider between **Shorter** and **Longer**
+2. Under **Reply Length**, drag the slider between **Shorter** and **Auto**
 3. The readout shows the current target, for example `Short · 1 sentence, 15 words max`
 
-The setting applies to every tone, including prompts you edit, and is applied when the reply is generated. Shorter settings produce fewer words and fewer follow-up sentences. It is saved as soon as you release the slider and is included in Export All / Import.
+The setting applies to every tone, including prompts you edit, and is applied when the reply is generated. Shorter settings produce fewer words and fewer follow-up sentences. **Auto** is the far-right choice: it skips the fixed word and sentence caps and lets the model choose the length from the post. It is saved as soon as you release the slider and is included in Export All / Import.
 
 ### Edit reply tones
 
@@ -200,7 +200,7 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
 | A feed rule does nothing | Refresh x.com if you just reloaded the extension — reloading an extension does not update tabs that are already open. Then check the **Feed Rules** toggle and the master toggle. Comparisons are strict, so `fewer than 1,000` does not match exactly 1,000. Posts whose count X does not expose are left alone. A hide rule wins over a highlight rule. |
 | Follower rules stopped working | X may have changed how it stores post data. Comments, likes, and reposts can still use the counts visible on the page; follower rules need the post data. Reload the extension and check for an update. |
-| Replies are too long or too short | Move **Reply Length** in **Settings → Reply Tones** left or right. It applies to every tone, including custom prompts, and overrides sentence limits written into a prompt. |
+| Replies are too long or too short | Move **Reply Length** in **Settings → Reply Tones** left or right. It applies to every tone, including custom prompts, and overrides sentence limits written into a prompt. **Auto** lets the model choose, so pick a fixed level if its choice is off. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
 | Tone menu does not open | Reload the extension at `chrome://extensions` and refresh x.com. The menu is injected next to the reply send button on the classic layout. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
@@ -209,7 +209,7 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 ## What's new in 1.6.0
 
 - Reply tone prompts were rewritten to sound like a person replying on X: specific, short, and free of AI filler.
-- A new **Reply Length** slider in **Settings → Reply Tones** sets how wordy Magic Reply drafts are, from one-liners to longer replies. It applies to every tone and overrides sentence limits inside a saved prompt.
+- A new **Reply Length** slider in **Settings → Reply Tones** sets how wordy Magic Reply drafts are, from one-liners to longer replies. The far-right **Auto** setting lets the model choose the length from the post instead of a fixed cap. It applies to every tone and overrides sentence limits inside a saved prompt.
 - Reply length is included in Export All / Import.
 - No new permissions and no extra network requests.
 
