@@ -187,6 +187,44 @@ This Chrome build ignores `--load-extension`, so a fresh temporary profile will 
 
 Other installed extensions may log missing-file errors because their files were not copied; only the X Buddy service worker and popup matter. The live browser window cannot be attached to unless it was started with `--remote-debugging-port`; use this profile copy for repeatable checks and the live browser for content-script checks that need a signed-in x.com session.
 
+### Testing in the logged-in Chrome browser
+
+Chrome 136+ no longer permits `--remote-debugging-port` against the default profile. To let an agent inspect the browser you are already logged into, enable Chrome's remote debugging bridge (Chrome 144+):
+
+1. Open `chrome://inspect/#remote-debugging` in the logged-in Chrome.
+2. Turn on **Enable remote debugging** and leave the browser running.
+3. When Chrome asks to allow the session, click **Allow**.
+
+Chrome writes the current endpoint to `~/.config/google-chrome/DevToolsActivePort`. The port and browser ID change when Chrome restarts or the toggle is turned off and on, so read them each time:
+
+```sh
+P=~/.config/google-chrome
+PORT=$(head -1 "$P/DevToolsActivePort")
+WSPATH=$(sed -n 2p "$P/DevToolsActivePort" | tr -d '\r')
+```
+
+The CLI connects with auto-connect, so it does not need the port. Use it for extension actions and page inspection:
+
+```sh
+export XDG_RUNTIME_DIR=/dev/shm   # DSH sandbox only; a normal shell can omit it
+CLI=<dsh-checkout>/packages/experimental/browser-use-chrome-devtools-mcp/node_modules/chrome-devtools-mcp/build/src/bin/chrome-devtools.js
+node "$CLI" start --auto-connect --channel=stable --categoryExtensions=true --no-usage-statistics
+node "$CLI" list_extensions
+node "$CLI" reload_extension <id>
+node "$CLI" new_page "chrome-extension://<id>/popup.html"
+node "$CLI" evaluate_script "() => document.documentElement.dataset.xbBuddy" --pageId <page>
+```
+
+The `dsh-chrome-devtools` plugin in the Harness `web` profile attaches to the same browser through `mode: attach` and the websocket endpoint:
+
+```text
+endpoint: ws://127.0.0.1:<port><WSPATH>
+```
+
+Update `~/.dsh/profiles/web/cordis.patch.yml` when the endpoint changes, then start a new chat. The plugin's per-chat browser tools cover page automation; the CLI covers `install_extension`, `reload_extension`, and extension pages/service workers.
+
+While remote debugging is on, the agent can read every tab, cookie, and login in that profile. Turn it off at `chrome://inspect/#remote-debugging` when you finish testing.
+
 ### Debugging
 
 - Set `DEBUG = true` at the top of `content.js` for verbose logging in the isolated-content-script console, and in `page-metrics.js` for logging in the page console. There is no runtime toggle wired up.
