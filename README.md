@@ -124,7 +124,7 @@ Matching posts use the new color immediately, and the choice survives reloads.
 2. Click **Export All** to download `xbuddy-config.json`
 3. On another browser, click **Import** and pick that file
 
-A full config restore replaces the current keyword lists, toggles, glow color, feed rules, reply length, tone prompts, and non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
+A full config restore replaces the current keyword lists, toggles, glow color, feed rules, reply length, and tone prompts, and updates the non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
 
 ### Add a keyword from the page
 
