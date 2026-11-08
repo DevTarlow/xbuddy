@@ -79,9 +79,11 @@ There is no automated test suite. Before committing a behavior change, check:
 - Reply Length changes the output for a hand-edited tone prompt, not just the built-in prompts.
 - A prompt saved as an old built-in default loads the new default; a hand-edited prompt is left alone.
 - Magic Reply fills the composer, the send button enables, and an existing draft is replaced rather than appended.
-- The popup shows the real LLM status.
-- Settings → Local LLM shows the defaults, and URL/model/generation values persist after reopening the popup.
-- Fetch Models lists the server's models, and Magic Reply uses the saved endpoint/model.
+- The popup shows the real LLM status: Connected, Offline, or No model.
+- Settings → Local LLM starts with an empty model field on a fresh profile, and URL/model/generation values persist after reopening the popup.
+- Fetch Models lists the server's models and fills the first one when the model field is empty, without overwriting a typed model.
+- With no model saved, Magic Reply fails with a clear choose-a-model message instead of sending a request.
+- Magic Reply uses the saved endpoint/model, and a previously saved model keeps working.
 - An unreachable URL shows Offline and a clear Magic Reply failure; restoring it recovers.
 - Export omits the API key and import restores the other LLM settings; a version 1 config still imports.
 - Invalid LLM URL or number input shows feedback and does not save.
@@ -117,7 +119,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`. The fee
 | `xbBuddyGlowColor` | `string` | `#00ff41` | Highlight color (`#rrggbb`) |
 | `xbBuddyTonePrompt_<id>` | `string` | `TONES[*].defaultPrompt` | Per-tone Magic Reply system prompt (`generic`, `agree`, `connect`, `disagree`, `funny`, `informative`) |
 | `xbBuddyReplyLength` | `integer` | `2` | Magic Reply length level 1–6 (`One-liner`, `Short`, `Balanced`, `Detailed`, `Long`, `Auto`) |
-| `xbBuddyLlmSettings` | `object` | `LLM_DEFAULTS` | Local LLM base URL, model, temperature, max tokens, timeout, thinking toggle, and optional API key |
+| `xbBuddyLlmSettings` | `object` | `LLM_DEFAULTS` | Local LLM base URL, model (empty until the user chooses one), temperature, max tokens, timeout, thinking toggle, and optional API key |
 | `xbBuddySettingsOpen` | `boolean` | `false` | Popup Settings section open state |
 | `xbBuddyNotification` | `object` | absent | Transient context-menu toast (`keyword`, `listType`, `duplicate`, or `error`) |
 
@@ -147,7 +149,7 @@ Keep these in sync across `content.js`, `popup.js`, and `background.js`. The fee
 - **Tone menu**: a fixed-position `div.magic-reply-dropdown` is appended to `document.body` with one button per tone. It closes on selection, outside click, or Escape, repositions on scroll/resize, flips above the trigger near the viewport bottom, and is removed when the master toggle pauses.
 - **Inline composer edge case**: On tweet detail pages, the composer is inline (not in a dialog). The tweet text lives ABOVE the composer in the DOM — `findTweetTextBefore()` picks the last `[data-testid="tweetText"]` that precedes the composer. The button is only injected on reply surfaces (`/status/`, `/compose/post`, or `in_reply_to=`), not the home timeline's "Post" box.
 - **Text insertion**: X's composer is Draft.js, whose DOM is owned by React. `insertTextIntoReply()` dispatches a synthetic `paste` event (after focusing and selecting the draft) so Draft updates its own `EditorState` and enables the Reply button. Do NOT use `textContent`/`execCommand` on the Draft DOM — it desyncs React and throws `removeChild is not a child of this node`.
-- **LLM**: `shared.js` defines `LLM_DEFAULTS`, `LLM_LIMITS`, `normalizeLlmBaseUrl()`, and `normalizeLlmSettings()`. The popup writes `xbBuddyLlmSettings`; `background.js` resolves and normalizes it on every request, so changes apply without a reload. Requests go to `${baseUrl}/v1/chat/completions`; model discovery uses `${baseUrl}/v1/models`. Only `localhost` and `127.0.0.1` URLs are accepted. Content-script requests to loopback are blocked by Chrome's Local Network Access policy; the service worker has the loopback host permission and is allowed. Response parsing handles `message.content`, `delta.content`, `reasoning_content`, and fallback fields. `chat_template_kwargs.enable_thinking = false` is sent only when the Disable model thinking setting is on (~10x faster replies on Gemma). The optional API key is sent as a Bearer token, kept in local storage, and excluded from exports.
+- **LLM**: `shared.js` defines `LLM_DEFAULTS`, `LLM_LIMITS`, `normalizeLlmBaseUrl()`, and `normalizeLlmSettings()`. `LLM_DEFAULTS.model` is intentionally empty: there is no built-in model name. The popup fills the field from Fetch Models or user input, `normalizeLlmSettings()` keeps an empty model empty, the popup shows No model until one is saved, and `generateReply()` throws a clear error before making a request. The popup writes `xbBuddyLlmSettings`; `background.js` resolves and normalizes it on every request, so changes apply without a reload. Requests go to `${baseUrl}/v1/chat/completions`; model discovery uses `${baseUrl}/v1/models`. Only `localhost` and `127.0.0.1` URLs are accepted. Content-script requests to loopback are blocked by Chrome's Local Network Access policy; the service worker has the loopback host permission and is allowed. Response parsing handles `message.content`, `delta.content`, `reasoning_content`, and fallback fields. `chat_template_kwargs.enable_thinking = false` is sent only when the Disable model thinking setting is on, which is much faster on reasoning models. The optional API key is sent as a Bearer token, kept in local storage, and excluded from exports.
 - **Keyword / rule changes**: `resetPostProcessing()` clears `data-xb-processed`, `.xb-glow-post`, `.xb-hidden-post`, `.xb-rule-glow-post`, `.xb-rule-hidden-post`, `data-xb-metrics-req`, and `data-xb-rules-retried`, then bumps `rulesGeneration` and replaces the metrics caches. Newly added keywords and rules apply to already-rendered posts; removed ones stop glowing or hiding. Changes are debounced through `scheduleReprocess()`.
 - **Master toggle**: `disableExtension()` stops the observer and safety checks, clears every injected class/marker, closes the tone menu, and removes Magic Reply wrappers. `enableExtension()` reloads settings and rescans. All scan functions are guarded by `enabled`.
 - **Popup lists**: five items per page, case-insensitive search, Clear All behind `confirm()`, and a 100-character limit. Duplicate or over-long adds flash feedback on the Add button; successful adds, clears, and toggle changes use the popup toast (`showToast(msg, 'error')` for failures).
@@ -253,6 +255,6 @@ While remote debugging is on, the agent can read every tab, cookie, and login in
 - **Change reply length levels**: Edit `REPLY_LENGTH_LEVELS` / `DEFAULT_REPLY_LENGTH` in `shared.js`; the popup slider and the background instruction both read them. An `auto: true` entry needs the matching branch in `buildReplyLengthInstruction()` and should not define `maxSentences` / `maxWords`.
 - **Add a reply tone**: Add an entry to `TONES` in `shared.js`. The popup selector, tone editor, Magic Reply menu, and background all read from that array; no other list to update. Add a `LEGACY_TONE_PROMPTS` key only when the tone previously shipped with a different default.
 - **Change tone menu labels**: Edit the `label` fields in `TONES` in `shared.js`.
-- **Change default LLM endpoint/model**: Edit `LLM_DEFAULTS` in `shared.js`; users override the URL and model in Settings.
+- **Change default LLM endpoint and generation defaults**: Edit `LLM_DEFAULTS` in `shared.js`; users override the URL and model in Settings. Leave `model` empty so the user chooses one with Fetch Models or types it. Do not add a built-in model name.
 - **Change LLM validation limits**: Edit `LLM_LIMITS` in `shared.js`; the popup and background both read them.
 - **Add permission**: Edit `permissions` / `host_permissions` in `manifest.json`

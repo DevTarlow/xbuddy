@@ -32,7 +32,7 @@
 
 - Chrome 111 or newer (tested on Chrome 156)
 - A local OpenAI-compatible server. The default is `http://localhost:8080`, but you can set the URL and port in **Settings → Local LLM**.
-- A model the server can load. The extension defaults to `gemma-4-E4B-it-QAT-Q4_0.gguf` and is tuned around it, but other chat models should work. Choose the model in Settings.
+- A model your server can load. X Buddy does not pre-fill a model name: click **Fetch Models** in Settings, or type the exact model name your server exposes.
 
 The model is not bundled. You need to run the server yourself.
 
@@ -41,7 +41,7 @@ The model is not bundled. You need to run the server yourself.
 With llama.cpp:
 
 ```bash
-llama-server -m path/to/gemma-4-E4B-it-QAT-Q4_0.gguf --port 8080
+llama-server -m path/to/your-model.gguf --port 8080
 ```
 
 With LM Studio, start the local server and load the model there. Use the port LM Studio shows (usually `1234`) as the Server URL.
@@ -138,12 +138,12 @@ Right-clicking a hashtag selects it for you. A leading `#` is stripped, so addin
 
 1. Click the X Buddy icon and expand **Settings**
 2. Under **Local LLM**, enter the **Server URL** (for example `http://localhost:8080` or `http://localhost:11434`)
-3. Click **Fetch Models** and choose a model, or type the model name yourself
+3. Click **Fetch Models** and choose a model (the first one is filled in when the field is empty), or type the model name yourself
 4. Add an **API Key** only if your server requires one
 5. Adjust **Temperature**, **Max reply tokens**, **Timeout**, and **Disable model thinking** as needed
 6. Click **Save LLM Settings**
 
-The status dot next to the title shows whether the saved server is reachable. Magic Reply uses the saved settings immediately; you do not need to reload the extension or x.com.
+The status dot next to the title shows whether the saved server and model are ready: **Connected**, **Offline**, or **No model**. Magic Reply uses the saved settings immediately; you do not need to reload the extension or x.com.
 
 The Server URL must be `localhost` or `127.0.0.1`. Include the port; the extension adds `/v1` for you. If your server does not expose `/v1/models`, **Fetch Models** will fail, but you can still type the model name and save. The API key is stored in Chrome's local storage and is never included in exports.
 
@@ -195,6 +195,7 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 | `Failed — Could not reach LLM server at ...` | Make sure your LLM server is running and **Settings → Local LLM** points at the right URL and port. Then reload the extension in `chrome://extensions` and refresh x.com. |
 | `Background unavailable — reload the extension` | The extension was reloaded while the tab stayed open. Refresh x.com. |
 | Popup says **Offline** | The server is not reachable at the saved Server URL. Start it, check the URL and port in **Settings → Local LLM**, then reopen the popup. If Magic Reply still works, your server may not expose `/v1/models`, which the status check uses. |
+| Popup says **No model** | Open **Settings → Local LLM**, click **Fetch Models** and choose one, or type the model name, then click **Save LLM Settings**. Magic Reply needs a model. |
 | `Failed — LLM server rejected the API key` | Check the API key in **Settings → Local LLM**, or clear it if your server does not use one. |
 | `Failed — LLM endpoint or model not found` | Check the Server URL and model name. Click **Fetch Models** to see what the server offers, or type the model name manually. |
 | `Failed — LLM request timed out ...` | Increase **Timeout (seconds)** in **Settings → Local LLM**, or use a smaller model. |
@@ -210,12 +211,12 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
 | Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, 3, and 4 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.6.1
+## What's new in 1.6.2
 
-- Built-in reply prompts were rewritten to sound warmer, more natural, and more like a person typing a reply.
-- Every tone except **Disagree** now stays on the poster's side; **Disagree** offers a friendly counterpoint without insults or snark.
-- Saved copies of the old built-in prompts upgrade automatically. Prompts you edited yourself are unchanged.
-- No new permissions and no extra network requests.
+- X Buddy no longer pre-fills a model name. Click **Fetch Models** to pick from the server's list, or type the model name yourself.
+- **Fetch Models** fills the first returned model when the field is empty, and leaves a model you already typed alone.
+- Until a model is saved, the popup shows **No model** and Magic Reply asks you to choose one instead of sending a request.
+- A model you already saved keeps working; no new permissions and no extra network requests.
 
 ## Status
 

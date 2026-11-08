@@ -347,6 +347,9 @@ async function fetchLlmModels() {
 
     if (models.length === 0) {
       setLlmFeedback('Server returned no models — type the name manually');
+    } else if (!llmModelInput.value.trim()) {
+      llmModelInput.value = models[0];
+      setLlmFeedback(`Found ${models.length} model${models.length === 1 ? '' : 's'} — selected ${models[0]}. Click Save LLM Settings.`);
     } else {
       setLlmFeedback(`Found ${models.length} model${models.length === 1 ? '' : 's'}`);
     }
@@ -1095,6 +1098,11 @@ function applySettingsState() {
 async function checkLlmStatus() {
   llmDot.className = 'dot';
   llmLabel.textContent = 'Checking…';
+
+  if (!llmSettings.model) {
+    llmLabel.textContent = '○ No model';
+    return;
+  }
 
   try {
     // Route the health check through the same background path Magic Reply uses,

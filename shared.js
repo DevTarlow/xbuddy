@@ -10,9 +10,11 @@ const DEFAULT_TONE_ID = 'generic';
 // extension reload. Keep the API key out of exports and logs.
 const LLM_SETTINGS_KEY = 'xbBuddyLlmSettings';
 
+// The model stays empty: there is no built-in model name. The popup fills it
+// from Fetch Models or from what the user types.
 const LLM_DEFAULTS = Object.freeze({
   baseUrl: 'http://localhost:8080',
-  model: 'gemma-4-E4B-it-QAT-Q4_0.gguf',
+  model: '',
   temperature: 0.7,
   maxTokens: 250,
   timeoutSeconds: 60,
@@ -71,9 +73,9 @@ function normalizeLlmSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const baseUrl = normalizeLlmBaseUrl(src.baseUrl) || LLM_DEFAULTS.baseUrl;
 
-  const model = typeof src.model === 'string' && src.model.trim()
+  const model = typeof src.model === 'string'
     ? src.model.trim().slice(0, LLM_LIMITS.modelMaxLength)
-    : LLM_DEFAULTS.model;
+    : '';
 
   const temperature = Math.round(clampLlmNumber(
     src.temperature,

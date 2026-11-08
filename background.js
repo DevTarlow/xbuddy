@@ -110,6 +110,9 @@ async function generateReply(postText, toneId) {
   if (!post) throw new Error('No post text to reply to');
 
   const settings = await resolveLlmSettings();
+  if (!settings.model) {
+    throw new Error('No model selected — choose one in Settings');
+  }
   const [systemPrompt, replyLength] = await Promise.all([
     loadTonePrompt(toneId),
     loadReplyLength(),
@@ -124,8 +127,8 @@ async function generateReply(postText, toneId) {
     ],
     temperature: settings.temperature,
     max_tokens: settings.maxTokens,
-    // Gemma 4 is a reasoning model. Thinking tokens add ~5s of latency and
-    // occasionally leave the model with a reasoning-only completion; this
+    // Reasoning models spend tokens on thinking. Thinking adds ~5s of latency
+    // and occasionally leaves the model with a reasoning-only completion; this
     // server (llama.cpp) honours the standard chat-template switch. Only send
     // the switch when the user has it enabled.
     ...(settings.disableThinking
