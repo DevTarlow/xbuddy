@@ -161,7 +161,7 @@ The Server URL must be `localhost` or `127.0.0.1`. Include the port; the extensi
 4. Wait a moment while your model writes
 5. Edit the draft if you want, then post it
 
-The reply goes into the composer, not straight to X. You always get the final say.
+The reply goes into the composer, not straight to X. You always get the final say. Replies stay warm and on the poster's side. The one exception is **Disagree**, which offers a friendly counterpoint.
 
 **Connect** is for posts that invite people to connect or ask what you are building. It names the specific project or detail from the post, offers to connect, and asks one short question about that detail, without pitching or making up details about your work. You can edit the draft to add your own project before posting.
 
@@ -180,7 +180,7 @@ The setting applies to every tone, including prompts you edit, and is applied wh
 3. Change the system prompt, then click **Save**
 4. Click **Restore Default** to put the built-in prompt back
 
-Each tone's prompt is saved separately. The Magic Reply menu uses whatever prompt is saved for the tone you pick. Built-in prompts were rewritten in 1.6.0 to sound like a person replying on X. If you saved the old built-in text without editing it, it now picks up the new prompt automatically; prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
+Each tone's prompt is saved separately. The Magic Reply menu uses whatever prompt is saved for the tone you pick. Built-in prompts were rewritten in 1.6.1 to sound warmer and more natural. They keep the reply on the poster's side; only **Disagree** offers a different view. If you saved an old built-in without editing it, it now picks up the new prompt automatically; prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
 
 <p align="center">
   <img src="glow-and-reply-tones.png" width="340" alt="X Buddy Settings showing the glow color picker, reply tone prompt editor, and export/import controls" />
@@ -210,13 +210,11 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
 | Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, 3, and 4 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.6.0
+## What's new in 1.6.1
 
-- Reply tone prompts were rewritten to sound like a person replying on X: specific, short, and free of AI filler.
-- A new **Connect** tone drafts warm replies to posts that invite connection or ask what you are building. It names a specific detail from the post, offers to connect, and asks one short question about it, with no pitch and no invented details.
-- A new **Reply Length** slider in **Settings → Reply Tones** sets how wordy Magic Reply drafts are, from one-liners to longer replies. The far-right **Auto** setting lets the model choose the length from the post instead of a fixed cap. It applies to every tone and overrides sentence limits inside a saved prompt.
-- Reply length is included in Export All / Import.
-- Feed rules can now match a **between** range with a minimum and maximum, and a new **Following** count joins Followers.
+- Built-in reply prompts were rewritten to sound warmer, more natural, and more like a person typing a reply.
+- Every tone except **Disagree** now stays on the poster's side; **Disagree** offers a friendly counterpoint without insults or snark.
+- Saved copies of the old built-in prompts upgrade automatically. Prompts you edited yourself are unchanged.
 - No new permissions and no extra network requests.
 
 ## Status

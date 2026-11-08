@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X Buddy",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Highlight, hide, and filter posts on X/Twitter, with AI-powered replies from a local LLM.",
   "icons": {
     "16": "icons/icon16.png",
