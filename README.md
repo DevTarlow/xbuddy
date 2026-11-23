@@ -165,7 +165,7 @@ The Server URL must be `localhost` or `127.0.0.1`. Include the port; the extensi
 
 The reply goes into the composer, not straight to X. You always get the final say. Replies stay warm and on the poster's side. The one exception is **Disagree**, which offers a friendly counterpoint.
 
-**Connect** is for posts that invite people to connect or ask what you are building. It names the specific project or detail from the post, offers to connect, and asks one short question about that detail, without pitching or making up details about your work. You can edit the draft to add your own project before posting.
+**Connect** is for posts that invite people to connect or ask what you are building. It names the specific project or detail from the post, offers to connect, and asks one short question about that detail, without pitching or making up details about your work. The built-in instruction ends the reply with a question mark and uses plain punctuation. You can edit the draft to add your own project before posting.
 
 ### Draft a post
 
@@ -181,9 +181,9 @@ Draft Post uses the same local model and the same **Writing Voice** as Magic Rep
 
 1. Click the X Buddy icon and expand **Settings**
 2. Under **Reply Length**, drag the slider between **Shorter** and **Auto**
-3. The readout shows the current target, for example `Short · 1 sentence, 15 words max`
+3. The readout shows the current target, for example `Balanced · up to 2 sentences, 25 words max`
 
-The setting applies to replies only, including tone instructions you edit. Draft Post takes its length from your Writing Voice. Shorter settings produce fewer words and fewer follow-up sentences. **Auto** is the far-right choice: it skips the fixed word and sentence caps and lets the model choose the length from the post. It is saved as soon as you release the slider and is included in Export All / Import.
+The setting applies to replies only, including tone instructions you edit. Draft Post takes its length from your Writing Voice. **Balanced** is the default because the shorter setting leaves no room for Connect or Informative replies. Shorter settings produce fewer words and fewer follow-up sentences. **Auto** is the far-right choice: it skips the fixed word and sentence caps and lets the model choose the length from the post. It is saved as soon as you release the slider and is included in Export All / Import.
 
 ### Tune your writing voice
 
@@ -192,7 +192,7 @@ The setting applies to replies only, including tone instructions you edit. Draft
 3. Click **Restore Default** to put the built-in voice back
 4. Click **Import .md** to load a skill file. Frontmatter is removed, and you can review the text before saving
 
-The built-in voice is based on the `moss-tweet-voice` skill: enthusiastic and genuine, grounded in concrete details, warm and human, encouraging, and curious, with short line breaks, no hashtags, no engagement bait, and no corporate or AI filler. It allows at most one emoji in a reply; delete that line if you want replies with none. The voice is added before every tone instruction and before Draft Post, so editing it changes every AI draft, not just one tone.
+The built-in voice is based on the `moss-tweet-voice` skill: enthusiastic and genuine, grounded in concrete details, warm and human, encouraging, and curious, with short line breaks, no hashtags, no engagement bait, and no corporate or AI filler. It allows at most one emoji in a reply; delete that line if you want replies with none. It also names the feeling first on a sad or frustrated post, stays gentle without agreeing with a put-down, and avoids claiming a specific model, setup, or hardware that was not in the post. The voice is added before every tone instruction and before Draft Post, so editing it changes every AI draft, not just one tone.
 
 **Post Examples** are used only by Draft Post. They are style references, not facts to reuse. Leave the box empty to skip them. **Restore Default** brings back the built-in examples.
 
@@ -205,7 +205,7 @@ If you edited a tone prompt in an earlier version, X Buddy keeps your wording an
 3. Change the tone instruction, then click **Save**
 4. Click **Restore Default** to put the built-in instruction back
 
-Each tone's instruction is saved separately and added after your Writing Voice. The Magic Reply menu uses whatever instruction is saved for the tone you pick. Built-in instructions keep the reply on the poster's side; only **Disagree** offers a different view. If you saved an old built-in prompt without editing it, it now loads as the short instruction; prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
+Each tone's instruction is saved separately and added after your Writing Voice. The Magic Reply menu uses whatever instruction is saved for the tone you pick. Built-in instructions keep the reply on the poster's side; only **Disagree** offers a different view, and it now opens with a plain disagreement instead of softening into agreement. If you saved an old built-in prompt without editing it, it now loads as the short instruction; prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
 
 <p align="center">
   <img src="glow-and-reply-tones.png" width="340" alt="X Buddy Settings showing the glow color picker, tone instruction editor, and export/import controls" />
@@ -240,12 +240,13 @@ Each tone's instruction is saved separately and added after your Writing Voice. 
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
 | Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, 3, 4, and 5 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.7.0
+## What's new in 1.7.1
 
-- **Writing Voice** and **Post Examples** in Settings, built from the moss-tweet-voice skill. Edit the voice, restore the default, or import a `.md` skill file.
-- Tone editors now hold short tone instructions layered on the shared voice. Saved old full prompts upgrade to the instruction automatically, and hand-edited prompts keep their wording.
-- **✨ Draft Post** in the home/profile compose box and the compose window rewrites a rough note into one post in your voice. It replaces the composer text and never posts for you.
-- Export/import version 5 includes the writing voice, post examples, and tone instructions. No new permissions; everything still stays on your machine.
+- **Balanced** is now the default Reply Length (up to 2 sentences, 25 words). The shorter default left no room for Connect or Informative replies.
+- Replies handle sad, mean-spirited, and personal-setup cases more carefully: empathy first, no agreement with a put-down, and no invented claims about your own model or hardware.
+- The built-in **Disagree** instruction now opens with a plain different view instead of agreeing with the premise.
+- The built-in **Connect** instruction now ends with a question mark and avoids em dashes.
+- Saved old voice, Connect, and Disagree defaults upgrade automatically; hand-edited text is kept.
 
 ## Status
 
