@@ -283,11 +283,10 @@ function buildReplyLengthInstruction(level) {
 }
 
 // ===== Writing voice and post examples =====
-// Derived from skill/moss-tweet-voice/SKILL.md. The skill file stays the local
-// reference; the distilled text is inlined so the extension works without it.
-// Stored values win. When changing a built-in, append the previous value to the
-// matching LEGACY_* list so saved defaults upgrade without touching hand-edited
-// text.
+// Derived from the moss-tweet-voice skill. The distilled voice is inlined here;
+// the extension does not read an external skill file. Stored values win. When
+// changing a built-in, append the previous value to the matching LEGACY_* list
+// so saved defaults upgrade without touching hand-edited text.
 const VOICE_KEY = 'xbBuddyVoiceSkill';
 const POST_EXAMPLES_KEY = 'xbBuddyPostExamples';
 
