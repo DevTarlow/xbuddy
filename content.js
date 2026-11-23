@@ -12,6 +12,7 @@ const NOTIFICATION_KEY = 'xbBuddyNotification';
 const DEFAULT_GLOW_COLOR = '#00ff41';
 const PROCESSED_ATTR = 'data-xb-processed';
 const MAGIC_REPLY_ATTR = 'data-magic-reply';
+const DRAFT_POST_ATTR = 'data-draft-post';
 
 // Feed-rule effects use their own classes so rule changes can be reverted
 // without touching keyword glow/hide state.
@@ -52,7 +53,6 @@ let rulesGeneration = 0;               // drops late metrics replies after a res
 let metricsCache = new WeakMap();      // article -> metrics
 let metricsPending = new WeakMap();    // article -> in-flight metrics promise
 let processedPosts = new WeakSet();    // prevent re-processing
-let processedDialogs = new WeakSet();  // prevent re-injecting buttons
 let observer = null;
 let safetyInterval = null;
 let reprocessTimer = null;
@@ -299,12 +299,12 @@ function disableExtension() {
   resetPostProcessing();
 
   closeToneMenu();
-  document.querySelectorAll('.magic-reply-wrapper').forEach((el) => el.remove());
-  document.querySelectorAll('.magic-reply-btn').forEach((el) => el.remove());
-  document.querySelectorAll(`[${MAGIC_REPLY_ATTR}]`).forEach((el) => {
+  document.querySelectorAll('.magic-reply-wrapper, .draft-post-wrapper').forEach((el) => el.remove());
+  document.querySelectorAll('.magic-reply-btn, .draft-post-btn').forEach((el) => el.remove());
+  document.querySelectorAll(`[${MAGIC_REPLY_ATTR}], [${DRAFT_POST_ATTR}]`).forEach((el) => {
     el.removeAttribute(MAGIC_REPLY_ATTR);
+    el.removeAttribute(DRAFT_POST_ATTR);
   });
-  processedDialogs = new WeakSet();
 }
 
 function scheduleReprocess() {
@@ -984,41 +984,80 @@ function applyRuleResult(container, metrics) {
 }
 
 // ===================================================================
-//  DIALOG / MODAL SCANNING (Magic Reply injection)
+//  COMPOSER SURFACE CLASSIFICATION
+//  Reply surfaces get Magic Reply; new-post surfaces get Draft Post.
 // ===================================================================
+
+function isReplyRoute() {
+  return /\/status\//.test(location.pathname) ||
+    /[?&]in_reply_to=/.test(location.search);
+}
+
+// Prefer the send button's own label: it distinguishes a reply from a new post
+// even when a quote or reply modal embeds another tweet's text.
+function getComposerMode(container, { isDialog = false } = {}) {
+  if (!container.querySelector('div[contenteditable="true"]')) return null;
+  if (!getSendButton(container)) return null;
+
+  const sendButton = getSendButton(container);
+  const label = `${sendButton.getAttribute('aria-label') || ''} ${sendButton.textContent || ''}`.toLowerCase();
+  if (label.includes('reply')) return 'reply';
+  if (label.includes('post')) return 'post';
+
+  if (/\/compose\/post/.test(location.pathname)) return 'post';
+  if (isReplyRoute()) return 'reply';
+
+  if (isDialog) {
+    if (container.querySelector('[data-testid="reply"]') ||
+        container.querySelector('[data-testid="tweetText"]')) {
+      return 'reply';
+    }
+    return 'post';
+  }
+
+  return 'post';
+}
+
+function ensureComposerAction(container, mode) {
+  const marker = mode === 'reply' ? MAGIC_REPLY_ATTR : DRAFT_POST_ATTR;
+  const buttonSelector = mode === 'reply' ? '.magic-reply-btn' : '.draft-post-btn';
+
+  if (container.hasAttribute(marker) && container.querySelector(buttonSelector)) return true;
+
+  // React can drop the button but leave the marker, and SPA navigation can
+  // reuse a composer across reply/post surfaces. Clear both modes before
+  // injecting the right one.
+  container.querySelectorAll('.magic-reply-wrapper, .draft-post-wrapper').forEach((wrapper) => {
+    wrapper.remove();
+  });
+  container.removeAttribute(MAGIC_REPLY_ATTR);
+  container.removeAttribute(DRAFT_POST_ATTR);
+
+  return injectComposerAction(container, mode);
+}
 
 function scanAllDialogs() {
   if (!enabled) return;
   for (const sel of DIALOG_SELECTORS) {
     const dialogs = document.querySelectorAll(sel);
     for (const dialog of dialogs) {
-      // X re-renders dialogs aggressively. If React removed our button but the
-      // marker attribute survived, re-inject instead of skipping forever.
-      if (dialog.querySelector('.magic-reply-btn')) continue;
-      dialog.querySelectorAll('.magic-reply-wrapper').forEach((wrapper) => {
-        if (!wrapper.querySelector('.magic-reply-btn')) wrapper.remove();
-      });
-      if (dialog.hasAttribute(MAGIC_REPLY_ATTR)) dialog.removeAttribute(MAGIC_REPLY_ATTR);
-      processedDialogs.delete(dialog);
-      tryInjectMagicReply(dialog);
+      const mode = getComposerMode(dialog, { isDialog: true });
+      if (!mode) continue;
+      ensureComposerAction(dialog, mode);
     }
   }
 }
 
 // ===================================================================
 //  INLINE COMPOSER SCANNING
-//  X's tweet detail page shows the reply composer inline (not in a dialog).
+//  X's tweet detail page shows the reply composer inline (not in a dialog),
+//  and the home/profile "Post" box is also an inline contenteditable.
 // ===================================================================
 
 function scanInlineComposers() {
   if (!enabled) return;
-  // Only embed the button on reply surfaces. The home timeline's "Post"
-  // composer is also a contenteditable with tweetButtonInline, but replying
-  // there would draft a reply to an unrelated tweet.
-  const replyRoute = /\/status\//.test(location.pathname) ||
-    /[?&]in_reply_to=/.test(location.search) ||
-    /\/compose\/post/.test(location.pathname);
-  if (!replyRoute) return;
+  // DM composers use contenteditables too, but they are not tweet surfaces.
+  if (/\/messages(?:\/|$)/.test(location.pathname) || /\/i\/chat/.test(location.pathname)) return;
 
   const textareas = document.querySelectorAll('div[contenteditable="true"]');
   for (const textarea of textareas) {
@@ -1027,78 +1066,53 @@ function scanInlineComposers() {
     // Skip contenteditable elements outside the main tweet area (bio, lists, DMs)
     if (!textarea.closest('[data-testid="primaryColumn"], [data-testid="cellInnerDiv"]')) continue;
 
-    // If React removed our button but left the marker, allow re-injection.
-    const marked = textarea.closest(`[${MAGIC_REPLY_ATTR}]`);
-    if (marked && marked.querySelector('.magic-reply-btn')) continue;
-    if (marked) marked.removeAttribute(MAGIC_REPLY_ATTR);
-
-    // Walk up to find a container with a send button
+    // Walk up to find a container with a send button.
     let container = textarea;
     let found = false;
     for (let i = 0; i < 6; i++) {
       const parent = container.parentElement;
       if (!parent || parent === document.body) break;
       container = parent;
-      if (container.querySelector('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]')) {
+      if (getSendButton(container)) {
         found = true;
         break;
       }
     }
     if (!found) continue;
 
-    container.setAttribute(MAGIC_REPLY_ATTR, 'true');
-    container.querySelectorAll('.magic-reply-wrapper').forEach((wrapper) => {
-      if (!wrapper.querySelector('.magic-reply-btn')) wrapper.remove();
-    });
-    if (!container.querySelector('.magic-reply-btn')) {
-      const wrapper = createMagicReplyWrapper(container);
-      const sendBtn = container.querySelector(
-        '[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'
-      );
-      if (sendBtn?.parentElement) {
-        sendBtn.parentElement.insertBefore(wrapper, sendBtn);
-      }
-    }
+    const mode = getComposerMode(container);
+    if (!mode) continue;
+    ensureComposerAction(container, mode);
   }
 }
 
-function tryInjectMagicReply(dialog) {
-  // X reply composer signals: contenteditable textarea + send button
-  const hasComposer = !!dialog.querySelector('div[contenteditable="true"]');
-  const hasSendButton = !!dialog.querySelector(
-    '[data-testid="tweetButtonInline"], [data-testid="tweetButton"]'
-  );
-  const hasReplyAction = !!dialog.querySelector('[data-testid="reply"]');
-
-  // Skip if none of the signals match — not a reply composer dialog
-  if (!hasComposer && !hasSendButton && !hasReplyAction) return;
-
-  // Strategy 1: Reply composer open — inject button near the send action
-  if (hasComposer || hasSendButton) {
-    const injected = injectButtonNearComposer(dialog);
-    if (injected) {
-      dialog.setAttribute(MAGIC_REPLY_ATTR, 'true');
-      processedDialogs.add(dialog);
-    }
-    return;
-  }
-}
-
-function createMagicReplyWrapper(dialog) {
+function createComposerActionWrapper(container, mode) {
   const wrapper = document.createElement('div');
-  wrapper.className = 'magic-reply-wrapper';
 
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'magic-reply-btn';
-  btn.textContent = '✨ Magic Reply';
-  btn.setAttribute('aria-haspopup', 'menu');
-  btn.setAttribute('aria-expanded', 'false');
   btn._resetTimer = null;
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleToneMenu(wrapper, dialog, btn);
-  });
+
+  if (mode === 'reply') {
+    wrapper.className = 'magic-reply-wrapper';
+    btn.className = 'magic-reply-btn';
+    btn.textContent = '✨ Magic Reply';
+    btn.setAttribute('aria-haspopup', 'menu');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleToneMenu(wrapper, container, btn);
+    });
+  } else {
+    wrapper.className = 'draft-post-wrapper';
+    btn.className = 'draft-post-btn';
+    btn.textContent = '✨ Draft Post';
+    btn.title = 'Write a rough idea in the composer, then click to draft it in your voice';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleDraftPostClick(btn, container);
+    });
+  }
 
   wrapper.appendChild(btn);
   return wrapper;
@@ -1210,21 +1224,17 @@ function createToneMenu(dialog, trigger) {
   return menu;
 }
 
-function injectButtonNearComposer(dialog) {
-  if (dialog.querySelector('.magic-reply-btn')) return false;
-  dialog.querySelectorAll('.magic-reply-wrapper').forEach((wrapper) => {
-    if (!wrapper.querySelector('.magic-reply-btn')) wrapper.remove();
-  });
+function getSendButton(container) {
+  return container.querySelector('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]')
+    || container.querySelector('button[aria-label="Reply"], button[aria-label="Post"]');
+}
 
-  const textarea = dialog.querySelector('div[contenteditable="true"]');
+function injectComposerAction(container, mode) {
+  const textarea = container.querySelector('div[contenteditable="true"]');
   if (!textarea) return false;
 
-  const wrapper = createMagicReplyWrapper(dialog);
-
-  // Try to find the send button to place our button near it
-  const sendButton = dialog.querySelector(
-    '[data-testid="tweetButtonInline"], [data-testid="tweetButton"], button[aria-label*="Reply"]'
-  );
+  const wrapper = createComposerActionWrapper(container, mode);
+  const sendButton = getSendButton(container);
 
   if (sendButton && sendButton.parentElement) {
     // Insert before the send button in its container
@@ -1239,6 +1249,7 @@ function injectButtonNearComposer(dialog) {
     }
   }
 
+  container.setAttribute(mode === 'reply' ? MAGIC_REPLY_ATTR : DRAFT_POST_ATTR, 'true');
   return true;
 }
 
@@ -1312,7 +1323,7 @@ async function handleMagicReplyClick(btn, dialog, toneId) {
       throw new Error('Reply box not found');
     }
 
-    const filled = await insertTextIntoReply(textarea, reply);
+    const filled = await insertTextIntoComposer(textarea, reply);
     if (!filled) {
       throw new Error('Could not fill reply box');
     }
@@ -1322,6 +1333,68 @@ async function handleMagicReplyClick(btn, dialog, toneId) {
     scheduleReset(btn, originalText, 2000);
   } catch (err) {
     console.warn('[X Buddy] Magic Reply error:', err);
+    btn.textContent = `✨ Failed — ${err.message || 'Error'}`;
+    btn.classList.add('failed');
+    scheduleReset(btn, originalText, 3000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ===================================================================
+//  DRAFT POST HANDLER
+// ===================================================================
+
+async function handleDraftPostClick(btn, container) {
+  if (!enabled) return;
+  if (btn._resetTimer) {
+    clearTimeout(btn._resetTimer);
+    btn._resetTimer = null;
+  }
+
+  const originalText = '✨ Draft Post';
+  let textarea = container.querySelector('div[contenteditable="true"]');
+  if (!textarea) {
+    btn.textContent = '✨ Composer not found';
+    btn.classList.add('failed');
+    scheduleReset(btn, originalText, 2000);
+    return;
+  }
+
+  // X's Draft.js composer puts the typed text in [data-text="true"]; reading
+  // that node avoids picking up the empty-composer placeholder.
+  const textNode = textarea.querySelector('[data-text="true"]') || textarea;
+  const note = (textNode.innerText || textNode.textContent || '').trim();
+  if (!note) {
+    btn.textContent = '✨ Add an idea first';
+    btn.classList.add('failed');
+    textarea.focus();
+    scheduleReset(btn, originalText, 2000);
+    return;
+  }
+
+  btn.textContent = '✨ Drafting…';
+  btn.disabled = true;
+  btn.classList.remove('failed');
+
+  try {
+    const post = await generatePost(note);
+
+    // The master toggle may have paused the extension while the LLM was working.
+    if (!enabled) return;
+    if (!btn.isConnected) return;
+
+    // React may have replaced the composer while the request was in flight.
+    textarea = container.querySelector('div[contenteditable="true"]') || textarea;
+    if (!textarea.isConnected) throw new Error('Composer closed — try again');
+
+    const filled = await insertTextIntoComposer(textarea, post);
+    if (!filled) throw new Error('Could not fill the composer');
+
+    btn.textContent = '✨ Drafted ✓';
+    scheduleReset(btn, originalText, 2000);
+  } catch (err) {
+    console.warn('[X Buddy] Draft Post error:', err);
     btn.textContent = `✨ Failed — ${err.message || 'Error'}`;
     btn.classList.add('failed');
     scheduleReset(btn, originalText, 3000);
@@ -1404,6 +1477,23 @@ async function generateReply(postText, toneId) {
   return reply;
 }
 
+async function generatePost(note) {
+  // Same proxying reason as generateReply: localhost is reachable from the
+  // service worker, not from the page's content script.
+  let response;
+  try {
+    response = await chrome.runtime.sendMessage({ type: 'xb:generate-post', note });
+  } catch {
+    throw new Error('Background unavailable — reload the extension');
+  }
+  if (!response || !response.ok) {
+    throw new Error(response?.error || 'LLM request failed');
+  }
+  const post = String(response.post || '').trim();
+  if (!post) throw new Error('Empty response from LLM');
+  return post;
+}
+
 function waitForContentEditable(parent, timeoutMs) {
   return new Promise((resolve, reject) => {
     const existing = parent.querySelector('div[contenteditable="true"]');
@@ -1454,10 +1544,10 @@ function findReactFiber(element) {
   return null;
 }
 
-async function insertTextIntoReply(textarea, text) {
+async function insertTextIntoComposer(textarea, text) {
   // X's composer is Draft.js (React-owned). Dispatching a synthetic paste is
   // the one insertion path that goes through the editor's own handler: Draft
-  // updates its EditorState, enables the Reply button, and leaves React's DOM
+  // updates its EditorState, enables the send button, and leaves React's DOM
   // intact. Direct DOM writes / execCommand desync React and were causing
   // "removeChild is not a child of this node" crashes.
   textarea.focus();

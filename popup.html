@@ -831,6 +831,27 @@
 
         <hr class="separator" />
 
+        <label class="settings-label" for="voice-skill-input" style="display: block; margin-top: 10px;">Writing Voice:</label>
+        <div class="section-hint" style="margin-bottom: 8px;">Used for every Magic Reply and Draft Post. Built from the moss-tweet-voice skill; edit it to make the extension sound like you.</div>
+        <textarea id="voice-skill-input" rows="8" spellcheck="false" placeholder="Describe how you write on X…"></textarea>
+        <div class="section-hint" id="voice-skill-feedback" role="status" aria-live="polite"></div>
+        <div class="action-row" style="margin-bottom: 8px;">
+          <button class="btn-outline" id="voice-import-btn">Import .md</button>
+          <button class="btn-outline" id="voice-restore-btn">Restore Default</button>
+        </div>
+        <button class="btn-primary" id="voice-save-btn">Save Voice</button>
+        <input type="file" accept=".md,.txt,text/markdown,text/plain" id="voice-import-input" hidden />
+
+        <label class="settings-label" for="post-examples-input" style="display: block; margin-top: 14px;">Post Examples:</label>
+        <div class="section-hint" style="margin-bottom: 8px;">Used only by Draft Post. Style references, not facts to reuse. Leave empty to skip them.</div>
+        <textarea id="post-examples-input" rows="5" spellcheck="false" placeholder="Paste a few example posts…"></textarea>
+        <div class="action-row">
+          <button class="btn-outline" id="post-examples-restore-btn">Restore Default</button>
+          <button class="btn-outline" id="post-examples-save-btn">Save</button>
+        </div>
+
+        <hr class="separator" />
+
         <div class="settings-label">Reply Length:</div>
         <div class="range-row">
           <input type="range" id="reply-length-input" min="1" max="6" step="1" value="2" aria-label="Reply length" />
@@ -840,7 +861,7 @@
           <span>Auto</span>
         </div>
         <div class="range-value" id="reply-length-value">Short · 1 sentence, 15 words max</div>
-        <div class="section-hint" style="margin-bottom: 10px;">Applied to every tone, including prompts you edit. Shorter replies read more like a real person; Auto lets the model choose the length for the post.</div>
+        <div class="section-hint" style="margin-bottom: 10px;">Applied to replies only, including prompts you edit. Draft Post length comes from your Writing Voice. Shorter replies read more like a real person; Auto lets the model choose the length for the post.</div>
 
         <hr class="separator" />
 
@@ -848,16 +869,16 @@
         <div class="input-row" style="margin-bottom: 8px;">
           <select id="tone-select" aria-label="Reply tone"></select>
         </div>
-        <div class="settings-label" id="tone-prompt-label">System Prompt (Generic):</div>
-        <textarea id="tone-prompt-input" rows="6" placeholder="System prompt for this tone…"></textarea>
-        <div class="section-hint" style="margin-bottom: 6px;">Length is set above and applied when the reply is generated.</div>
+        <div class="settings-label" id="tone-prompt-label">Tone Instructions (Generic):</div>
+        <textarea id="tone-prompt-input" rows="6" placeholder="Tone instruction for this tone…"></textarea>
+        <div class="section-hint" style="margin-bottom: 6px;">Added after your Writing Voice. Keep it short; reply length is set above.</div>
         <div class="input-row" style="margin-bottom: 4px;">
           <button class="btn-outline" id="restore-tone-btn">Restore Default</button>
           <button id="save-tone-btn">Save</button>
         </div>
 
         <div class="settings-label" style="margin-top: 14px;">Export / Import:</div>
-        <div class="section-hint" style="margin-bottom: 8px;">Back up keywords, toggles, glow color, feed rules, reply length, and tone prompts as JSON.</div>
+        <div class="section-hint" style="margin-bottom: 8px;">Back up keywords, toggles, glow color, feed rules, reply length, writing voice, post examples, and tone instructions as JSON.</div>
         <div class="action-row">
           <button class="btn-outline" id="export-btn">Export All</button>
           <button class="btn-outline" id="import-btn">Import</button>

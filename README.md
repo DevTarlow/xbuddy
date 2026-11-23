@@ -4,7 +4,7 @@
 
 <h1 align="center">X Buddy</h1>
 
-<p align="center">Keyword highlights, count-based feed rules, negative filtering, and AI reply drafts for X, powered by a model running on your own machine.</p>
+<p align="center">Keyword highlights, count-based feed rules, negative filtering, and AI reply and post drafts for X, powered by a model running on your own machine.</p>
 
 > **X Buddy is under active development.** It works, but it is rough around the edges and X changes their site a lot. Expect a broken selector now and then. If something stops working, open an issue and include what you see.
 
@@ -22,11 +22,13 @@
 - **Toggles.** A master switch pauses everything without losing your settings, and separate switches control positive highlighting, negative filtering, and feed rules.
 - **List controls.** Search either list, page through long lists, and clear a list in one click. Duplicate and over-long keywords are rejected with feedback.
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
-- **Backup.** Export keywords, toggles, glow color, feed rules, reply length, tone prompts, and LLM settings to a JSON file, and import them on another browser.
+- **Backup.** Export keywords, toggles, glow color, feed rules, reply length, writing voice, post examples, tone instructions, and LLM settings to a JSON file, and import them on another browser.
 - **Right-click capture.** Select a word or hashtag on X and add it to either list from the context menu, with a toast confirming the add.
-- **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Connect, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone has its own editable prompt, and a Reply Length slider keeps drafts short, lets them run longer, or hands the length choice to the model. You can edit the draft before posting.
-- **Local LLM settings.** Point Magic Reply at any OpenAI-compatible server on `localhost` or `127.0.0.1`, choose the model, and tune temperature, max reply tokens, timeout, and thinking. An optional API key is supported.
-- **Stays local.** No accounts and no tracking. Most local servers need no API key; if yours does, it stays in Chrome's local storage. Your keywords and posts go to the model on your computer and nowhere else.
+- **Writing Voice.** One editable voice, built from the moss-tweet-voice skill, is added to every reply and every drafted post. Tune it in Settings, restore the built-in default, or import a skill file. Post Examples are used only when drafting an original post.
+- **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Connect, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone is a short instruction layered on your Writing Voice, and a Reply Length slider keeps drafts short, lets them run longer, or hands the length choice to the model. You can edit the draft before posting.
+- **Draft Post.** In the home or profile compose box, or the compose window, type a rough idea and click **✨ Draft Post**. Your model rewrites it into one post in your voice. Edit it, then post; it never posts for you.
+- **Local LLM settings.** Point Magic Reply and Draft Post at any OpenAI-compatible server on `localhost` or `127.0.0.1`, choose the model, and tune temperature, max reply tokens, timeout, and thinking. An optional API key is supported.
+- **Stays local.** No accounts and no tracking. Most local servers need no API key; if yours does, it stays in Chrome's local storage. Your keywords, posts, and reply notes go to the model on your computer and nowhere else.
 
 ## What you need
 
@@ -108,7 +110,7 @@ X does not display follower or following counts on posts in the timeline, so the
 
 ### Pause everything
 
-The toggle next to the X Buddy title is the master switch. Turning it off removes highlighting, hidden posts, and Magic Reply buttons without deleting any settings. Turn it back on to restore them.
+The toggle next to the X Buddy title is the master switch. Turning it off removes highlighting, hidden posts, Magic Reply buttons, and Draft Post buttons without deleting any settings. Turn it back on to restore them.
 
 ### Pick a glow color
 
@@ -124,7 +126,7 @@ Matching posts use the new color immediately, and the choice survives reloads.
 2. Click **Export All** to download `xbuddy-config.json`
 3. On another browser, click **Import** and pick that file
 
-A full config restore replaces the current keyword lists, toggles, glow color, feed rules, reply length, and tone prompts, and updates the non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
+A full config restore replaces the current keyword lists, toggles, glow color, feed rules, reply length, writing voice, post examples, and tone instructions, and updates the non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them.
 
 ### Add a keyword from the page
 
@@ -143,7 +145,7 @@ Right-clicking a hashtag selects it for you. A leading `#` is stripped, so addin
 5. Adjust **Temperature**, **Max reply tokens**, **Timeout**, and **Disable model thinking** as needed
 6. Click **Save LLM Settings**
 
-The status dot next to the title shows whether the saved server and model are ready: **Connected**, **Offline**, or **No model**. Magic Reply uses the saved settings immediately; you do not need to reload the extension or x.com.
+The status dot next to the title shows whether the saved server and model are ready: **Connected**, **Offline**, or **No model**. Magic Reply and Draft Post use the saved settings immediately; you do not need to reload the extension or x.com.
 
 The Server URL must be `localhost` or `127.0.0.1`. Include the port; the extension adds `/v1` for you. If your server does not expose `/v1/models`, **Fetch Models** will fail, but you can still type the model name and save. The API key is stored in Chrome's local storage and is never included in exports.
 
@@ -165,28 +167,51 @@ The reply goes into the composer, not straight to X. You always get the final sa
 
 **Connect** is for posts that invite people to connect or ask what you are building. It names the specific project or detail from the post, offers to connect, and asks one short question about that detail, without pitching or making up details about your work. You can edit the draft to add your own project before posting.
 
+### Draft a post
+
+1. Open the compose box on the home timeline or a profile page, or open the compose window
+2. Type a rough idea, a topic, or a note about what happened
+3. Click **✨ Draft Post** next to the **Post** button
+4. Wait a moment while your model rewrites the note into one post in your voice
+5. Edit it, then post
+
+Draft Post uses the same local model and the same **Writing Voice** as Magic Reply, plus your **Post Examples** for style. It replaces the text in the composer and never posts for you. If the composer is empty, the button says **Add an idea first** and sends no request. It creates one post, not a thread. If the home compose box is collapsed, click into it first so the button can appear.
+
 ### Set reply length
 
 1. Click the X Buddy icon and expand **Settings**
 2. Under **Reply Length**, drag the slider between **Shorter** and **Auto**
 3. The readout shows the current target, for example `Short · 1 sentence, 15 words max`
 
-The setting applies to every tone, including prompts you edit, and is applied when the reply is generated. Shorter settings produce fewer words and fewer follow-up sentences. **Auto** is the far-right choice: it skips the fixed word and sentence caps and lets the model choose the length from the post. It is saved as soon as you release the slider and is included in Export All / Import.
+The setting applies to replies only, including tone instructions you edit. Draft Post takes its length from your Writing Voice. Shorter settings produce fewer words and fewer follow-up sentences. **Auto** is the far-right choice: it skips the fixed word and sentence caps and lets the model choose the length from the post. It is saved as soon as you release the slider and is included in Export All / Import.
 
-### Edit reply tones
+### Tune your writing voice
+
+1. Click the X Buddy icon and expand **Settings**
+2. Under **Writing Voice**, edit the voice, then click **Save Voice**
+3. Click **Restore Default** to put the built-in voice back
+4. Click **Import .md** to load a skill file. Frontmatter is removed, and you can review the text before saving
+
+The built-in voice is based on the `moss-tweet-voice` skill: enthusiastic and genuine, grounded in concrete details, warm and human, encouraging, and curious, with short line breaks, no hashtags, no engagement bait, and no corporate or AI filler. It allows at most one emoji in a reply; delete that line if you want replies with none. The voice is added before every tone instruction and before Draft Post, so editing it changes every AI draft, not just one tone.
+
+**Post Examples** are used only by Draft Post. They are style references, not facts to reuse. Leave the box empty to skip them. **Restore Default** brings back the built-in examples.
+
+If you edited a tone prompt in an earlier version, X Buddy keeps your wording and removes the old shared intro so it is not repeated on top of the Writing Voice.
+
+### Edit tone instructions
 
 1. Click the X Buddy icon and expand **Settings**
 2. Under **Reply Tones**, choose the tone you want to edit
-3. Change the system prompt, then click **Save**
-4. Click **Restore Default** to put the built-in prompt back
+3. Change the tone instruction, then click **Save**
+4. Click **Restore Default** to put the built-in instruction back
 
-Each tone's prompt is saved separately. The Magic Reply menu uses whatever prompt is saved for the tone you pick. Built-in prompts were rewritten in 1.6.1 to sound warmer and more natural. They keep the reply on the poster's side; only **Disagree** offers a different view. If you saved an old built-in without editing it, it now picks up the new prompt automatically; prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
+Each tone's instruction is saved separately and added after your Writing Voice. The Magic Reply menu uses whatever instruction is saved for the tone you pick. Built-in instructions keep the reply on the poster's side; only **Disagree** offers a different view. If you saved an old built-in prompt without editing it, it now loads as the short instruction; prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
 
 <p align="center">
-  <img src="glow-and-reply-tones.png" width="340" alt="X Buddy Settings showing the glow color picker, reply tone prompt editor, and export/import controls" />
+  <img src="glow-and-reply-tones.png" width="340" alt="X Buddy Settings showing the glow color picker, tone instruction editor, and export/import controls" />
 </p>
 
-<p align="center"><em>Settings: glow color, per-tone reply prompts, and backup controls.</em></p>
+<p align="center"><em>Settings: glow color, tone instructions, and backup controls.</em></p>
 
 ## Troubleshooting
 
@@ -194,8 +219,8 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 |---|---|
 | `Failed — Could not reach LLM server at ...` | Make sure your LLM server is running and **Settings → Local LLM** points at the right URL and port. Then reload the extension in `chrome://extensions` and refresh x.com. |
 | `Background unavailable — reload the extension` | The extension was reloaded while the tab stayed open. Refresh x.com. |
-| Popup says **Offline** | The server is not reachable at the saved Server URL. Start it, check the URL and port in **Settings → Local LLM**, then reopen the popup. If Magic Reply still works, your server may not expose `/v1/models`, which the status check uses. |
-| Popup says **No model** | Open **Settings → Local LLM**, click **Fetch Models** and choose one, or type the model name, then click **Save LLM Settings**. Magic Reply needs a model. |
+| Popup says **Offline** | The server is not reachable at the saved Server URL. Start it, check the URL and port in **Settings → Local LLM**, then reopen the popup. If Magic Reply or Draft Post still works, your server may not expose `/v1/models`, which the status check uses. |
+| Popup says **No model** | Open **Settings → Local LLM**, click **Fetch Models** and choose one, or type the model name, then click **Save LLM Settings**. Magic Reply and Draft Post need a model. |
 | `Failed — LLM server rejected the API key` | Check the API key in **Settings → Local LLM**, or clear it if your server does not use one. |
 | `Failed — LLM endpoint or model not found` | Check the Server URL and model name. Click **Fetch Models** to see what the server offers, or type the model name manually. |
 | `Failed — LLM request timed out ...` | Increase **Timeout (seconds)** in **Settings → Local LLM**, or use a smaller model. |
@@ -205,18 +230,22 @@ Each tone's prompt is saved separately. The Magic Reply menu uses whatever promp
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
 | A feed rule does nothing | Refresh x.com if you just reloaded the extension — reloading an extension does not update tabs that are already open. Then check the **Feed Rules** toggle and the master toggle. `fewer than` and `more than` are strict; `between` includes both ends. Posts whose count X does not expose are left alone, and follower and following rules need the post data. A hide rule wins over a highlight rule. |
 | Follower or following rules stopped working | X may have changed how it stores post data. Comments, likes, and reposts can still use the counts visible on the page; follower and following rules need the post data. Reload the extension and check for an update. |
-| Replies are too long or too short | Move **Reply Length** in **Settings → Reply Tones** left or right. It applies to every tone, including custom prompts, and overrides sentence limits written into a prompt. **Auto** lets the model choose, so pick a fixed level if its choice is off. |
+| Replies are too long or too short | Move **Reply Length** in **Settings** left or right. It applies to replies only, including custom tone instructions, and overrides sentence limits written into an instruction. **Auto** lets the model choose, so pick a fixed level if its choice is off. Draft Post ignores it; adjust **Writing Voice** and **Post Examples** instead. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
+| Draft Post button is missing | Open the home or profile compose box first; the button appears once the editable composer is open. Refresh x.com after reloading the extension. If Magic Reply works but Draft Post does not, the send button may not look like a `Post` button in your layout. |
+| Draft Post says **Add an idea first** | Type a rough idea or topic in the composer before clicking the button. An empty composer is not sent to the model. |
+| A Writing Voice change did not apply | Click **Save Voice**. The next request uses it; no extension reload is needed. If it still looks unchanged, check the service worker console for a storage error. |
+| Draft Post does not sound like my examples | Keep the **Writing Voice** short and specific, and put style examples in **Post Examples**, not the voice. Very long voices can be truncated. |
 | Tone menu does not open | Reload the extension at `chrome://extensions` and refresh x.com. The menu is injected next to the reply send button on the classic layout. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
-| Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, 3, and 4 configs, or older files with `positive` and/or `negative` arrays. |
+| Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, 3, 4, and 5 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.6.2
+## What's new in 1.7.0
 
-- X Buddy no longer pre-fills a model name. Click **Fetch Models** to pick from the server's list, or type the model name yourself.
-- **Fetch Models** fills the first returned model when the field is empty, and leaves a model you already typed alone.
-- Until a model is saved, the popup shows **No model** and Magic Reply asks you to choose one instead of sending a request.
-- A model you already saved keeps working; no new permissions and no extra network requests.
+- **Writing Voice** and **Post Examples** in Settings, built from the moss-tweet-voice skill. Edit the voice, restore the default, or import a `.md` skill file.
+- Tone editors now hold short tone instructions layered on the shared voice. Saved old full prompts upgrade to the instruction automatically, and hand-edited prompts keep their wording.
+- **✨ Draft Post** in the home/profile compose box and the compose window rewrites a rough note into one post in your voice. It replaces the composer text and never posts for you.
+- Export/import version 5 includes the writing voice, post examples, and tone instructions. No new permissions; everything still stays on your machine.
 
 ## Status
 
@@ -231,7 +260,9 @@ X Buddy is an early build. What is done and what is next:
 - [x] Full-config export/import
 - [x] Right-click keyword capture
 - [x] Magic Reply with a local model
-- [x] Six reply tones with editable prompts
+- [x] Editable writing voice and post examples
+- [x] Six reply tones with editable instructions
+- [x] Draft Post with a local model
 - [x] Adjustable reply length
 - [x] LLM settings for the server URL, model, and generation options
 - [ ] Support X's new web layout
@@ -244,8 +275,8 @@ X started testing a new web layout for logged-in users in late 2026. It removes 
 - The extension asks for `storage` so it can remember your keywords, and `contextMenus` so you can right-click text to add it to a list.
 - Feed rules read follower, following, comment, like, and repost counts from the post data X already loaded. They add no permissions and make no extra requests.
 - It can talk to `x.com`, `twitter.com`, and the local LLM server you configure (`localhost` or `127.0.0.1` only). That is it.
-- Your keyword lists, feed rules, reply length, tone prompts, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports.
-- Posts are sent to your own model server. Nothing is sent to us, and there is no analytics or remote code.
+- Your keyword lists, feed rules, reply length, writing voice, post examples, tone instructions, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports. The voice and examples are included in exports.
+- Posts, reply notes, and the writing voice are sent to your own model server. Nothing is sent to us, and there is no analytics or remote code.
 
 ## License
 

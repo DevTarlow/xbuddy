@@ -70,12 +70,14 @@
   color: #ff6b6b;
 }
 
-/* --- Magic Reply Button --- */
-.magic-reply-wrapper {
+/* --- Composer Action Buttons (Magic Reply / Draft Post) --- */
+.magic-reply-wrapper,
+.draft-post-wrapper {
   display: inline-block;
 }
 
-.magic-reply-btn {
+.magic-reply-btn,
+.draft-post-btn {
   all: unset;
   background: transparent;
   border: none;
@@ -92,25 +94,30 @@
   user-select: none;
 }
 
-.magic-reply-btn:hover {
+.magic-reply-btn:hover,
+.draft-post-btn:hover {
   background: rgba(0, 255, 65, 0.12);
 }
 
-.magic-reply-btn:active {
+.magic-reply-btn:active,
+.draft-post-btn:active {
   background: rgba(0, 255, 65, 0.2);
 }
 
-.magic-reply-btn:disabled {
+.magic-reply-btn:disabled,
+.draft-post-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
 }
 
-.magic-reply-btn.failed {
+.magic-reply-btn.failed,
+.draft-post-btn.failed {
   color: rgb(255, 100, 100);
 }
 
-.magic-reply-btn.failed:hover {
+.magic-reply-btn.failed:hover,
+.draft-post-btn.failed:hover {
   background: rgba(255, 100, 100, 0.12);
 }
 

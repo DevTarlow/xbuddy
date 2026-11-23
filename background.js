@@ -75,15 +75,35 @@ function getTone(toneId) {
     || TONES[0];
 }
 
-async function loadTonePrompt(toneId) {
+async function loadVoiceSkill() {
+  try {
+    const stored = await chrome.storage.local.get(VOICE_KEY);
+    return resolveVoiceSkill(stored[VOICE_KEY]);
+  } catch (err) {
+    console.warn('[X Buddy] Could not load writing voice:', err);
+    return DEFAULT_VOICE_SKILL;
+  }
+}
+
+async function loadPostExamples() {
+  try {
+    const stored = await chrome.storage.local.get(POST_EXAMPLES_KEY);
+    return resolvePostExamples(stored[POST_EXAMPLES_KEY]);
+  } catch (err) {
+    console.warn('[X Buddy] Could not load post examples:', err);
+    return DEFAULT_POST_EXAMPLES;
+  }
+}
+
+async function loadToneInstruction(toneId) {
   const tone = getTone(toneId);
   const key = TONE_PROMPT_PREFIX + tone.id;
   try {
     const stored = await chrome.storage.local.get(key);
-    return resolveTonePrompt(tone, stored[key]);
+    return resolveToneInstruction(tone, stored[key]);
   } catch (err) {
-    console.warn('[X Buddy] Could not load tone prompt:', err);
-    return tone.defaultPrompt;
+    console.warn('[X Buddy] Could not load tone instruction:', err);
+    return tone.direction;
   }
 }
 
@@ -102,23 +122,22 @@ function cleanReply(text) {
   out = out.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/i, '').trim();
   out = out.replace(/^(?:reply|response)\s*:\s*/i, '').trim();
   out = out.replace(/^["“”'](.*)["“”']$/s, '$1').trim();
+  out = out.replace(/^(?:reply|response)\s*:\s*/i, '').trim();
   return out;
 }
 
-async function generateReply(postText, toneId) {
-  const post = String(postText || '').trim().slice(0, 6000);
-  if (!post) throw new Error('No post text to reply to');
+function cleanPost(text) {
+  let out = String(text || '').trim();
+  out = out.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/i, '').trim();
+  out = out.replace(/^(?:post|tweet|draft)\s*:\s*/i, '').trim();
+  out = out.replace(/^["“”'](.*)["“”']$/s, '$1').trim();
+  out = out.replace(/^(?:post|tweet|draft)\s*:\s*/i, '').trim();
+  return out;
+}
 
-  const settings = await resolveLlmSettings();
-  if (!settings.model) {
-    throw new Error('No model selected — choose one in Settings');
-  }
-  const [systemPrompt, replyLength] = await Promise.all([
-    loadTonePrompt(toneId),
-    loadReplyLength(),
-  ]);
-  const userPrompt = `Write a reply to this post:\n\n${post}\n\n${buildReplyLengthInstruction(replyLength)}`;
-
+// Shared by Magic Reply and Draft Post. Returns the raw completion; each caller
+// applies its own cleanup.
+async function requestCompletion(settings, systemPrompt, userPrompt) {
   const body = JSON.stringify({
     model: settings.model,
     messages: [
@@ -164,10 +183,7 @@ async function generateReply(postText, toneId) {
 
   // OpenAI-compatible response format
   const content = choice?.message?.content ?? choice?.delta?.content ?? data?.content ?? data?.response;
-  if (typeof content === 'string' && content.trim()) {
-    const reply = cleanReply(content);
-    if (reply) return reply;
-  }
+  if (typeof content === 'string' && content.trim()) return content;
 
   // Reasoning-only completion — never inject chain-of-thought into the composer.
   if (choice?.message?.reasoning_content) {
@@ -175,6 +191,46 @@ async function generateReply(postText, toneId) {
   }
 
   throw new Error('Unexpected LLM response');
+}
+
+async function generateReply(postText, toneId) {
+  const post = String(postText || '').trim().slice(0, 6000);
+  if (!post) throw new Error('No post text to reply to');
+
+  const settings = await resolveLlmSettings();
+  if (!settings.model) {
+    throw new Error('No model selected — choose one in Settings');
+  }
+  const [voice, toneInstruction, replyLength] = await Promise.all([
+    loadVoiceSkill(),
+    loadToneInstruction(toneId),
+    loadReplyLength(),
+  ]);
+  const systemPrompt = composeReplySystemPrompt(voice, toneInstruction);
+  const userPrompt = `Write a reply to this post:\n\n${post}\n\n${buildReplyLengthInstruction(replyLength)}`;
+
+  const content = await requestCompletion(settings, systemPrompt, userPrompt);
+  const reply = cleanReply(content);
+  if (!reply) throw new Error('Unexpected LLM response');
+  return reply;
+}
+
+async function generatePost(note) {
+  const source = String(note || '').trim().slice(0, 4000);
+  if (!source) throw new Error('No text to draft from');
+
+  const settings = await resolveLlmSettings();
+  if (!settings.model) {
+    throw new Error('No model selected — choose one in Settings');
+  }
+  const [voice, examples] = await Promise.all([loadVoiceSkill(), loadPostExamples()]);
+  const systemPrompt = composePostSystemPrompt(voice, examples);
+  const userPrompt = composePostUserPrompt(source);
+
+  const content = await requestCompletion(settings, systemPrompt, userPrompt);
+  const post = cleanPost(content);
+  if (!post) throw new Error('Unexpected LLM response');
+  return post;
 }
 
 async function fetchLlmModels(settings) {
@@ -333,6 +389,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'xb:generate-reply') {
     generateReply(message.postText, message.toneId)
       .then((reply) => sendResponse({ ok: true, reply }))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || 'LLM request failed' }));
+    return true; // async response
+  }
+
+  if (message?.type === 'xb:generate-post') {
+    generatePost(message.note)
+      .then((post) => sendResponse({ ok: true, post }))
       .catch((err) => sendResponse({ ok: false, error: err?.message || 'LLM request failed' }));
     return true; // async response
   }
