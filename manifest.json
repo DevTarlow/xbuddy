@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X Buddy",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "Highlight, hide, and filter posts on X/Twitter, with AI-powered replies and drafts from a local LLM.",
   "icons": {
     "16": "icons/icon16.png",
@@ -10,7 +10,8 @@
   },
   "permissions": [
     "storage",
-    "contextMenus"
+    "contextMenus",
+    "scripting"
   ],
   "host_permissions": [
     "https://x.com/*",
@@ -37,6 +38,16 @@
         "page-metrics.js"
       ],
       "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "content-start.js"
+      ],
       "run_at": "document_start"
     },
     {

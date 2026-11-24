@@ -1,6 +1,24 @@
 // ===== X Buddy — Content Script =====
 // Injects keyword highlighting and Magic Reply into x.com (Twitter)
 
+// The service worker checks this marker before injecting the content scripts
+// into a tab that was already open when the extension started. Set it
+// synchronously, before the async init, so a tab that is still starting is
+// never injected twice.
+const LOADED_MARKER_ATTR = 'data-xb-buddy-loaded';
+if (document.documentElement) {
+  document.documentElement.setAttribute(LOADED_MARKER_ATTR, '1');
+}
+
+// Answer the service worker's liveness check. A response also proves this
+// document is running the current extension instance, not an orphaned content
+// script from before an extension reload.
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'xb:ping') {
+    sendResponse({ ok: true });
+  }
+});
+
 // Keep these storage keys in sync with popup.js and background.js.
 const STORAGE_KEY = 'xbBuddyKeywords';
 const NEGATIVE_STORAGE_KEY = 'xbBuddyNegativeKeywords';

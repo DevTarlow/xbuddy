@@ -338,12 +338,237 @@ function setupContextMenus() {
   });
 }
 
-chrome.runtime.onInstalled.addListener(setupContextMenus);
-chrome.runtime.onStartup.addListener(setupContextMenus);
+// ===================================================================
+//  OPEN-TAB RECOVERY
+// ===================================================================
+// Content scripts run once when a document loads. If Chrome restores an X tab
+// before the extension finishes starting, or the extension is reloaded while a
+// tab stays open, that document never gets the content script and the page
+// looks inactive until it is refreshed. Recover those tabs from the service
+// worker so the user does not have to refresh by hand.
 
-// Unpacked reloads do not always fire onInstalled, so recreate the menus when
-// the service worker starts as well.
+const X_TAB_URL_PATTERNS = ['https://x.com/*', 'https://twitter.com/*'];
+const CONTENT_LOADED_ATTR = 'data-xb-buddy-loaded';
+const CONTENT_SCHEDULED_ATTR = 'data-xb-buddy-scheduled';
+const CONTENT_SCRIPT_FILES = ['shared.js', 'content.js'];
+const METRICS_SCRIPT_FILES = ['page-metrics.js'];
+const CONTENT_STYLE_FILES = ['styles.css'];
+const CONTENT_PING_RETRY_MS = 250;
+const CONTENT_INJECT_DELAY_MS = 1000;
+const STALE_TAB_RELOAD_MS = 30_000;
+
+const recoveredTabReloads = new Map();
+const recoveryInFlight = new Set();
+let recoveryTimer = null;
+let recoveryRun = null;
+
+function isXTabUrl(url) {
+  return /^https:\/\/(?:x|twitter)\.com\//i.test(String(url || ''));
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pingContentScript(tabId) {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { type: 'xb:ping' });
+    return response?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+async function hasContentMarker(tabId, attr) {
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (name) => document.documentElement.hasAttribute(name),
+      args: [attr],
+    });
+    return result?.result === true;
+  } catch {
+    return false;
+  }
+}
+
+async function tabHasDraft(tabId) {
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const editables = document.querySelectorAll(
+          '[data-testid="tweetTextarea_0"], [role="textbox"][contenteditable="true"], '
+          + '[contenteditable="true"], textarea'
+        );
+        for (const el of editables) {
+          const text = el.tagName === 'TEXTAREA' ? el.value : el.textContent;
+          if (text && text.trim()) return true;
+        }
+        return false;
+      },
+    });
+    return result?.result === true;
+  } catch {
+    return false;
+  }
+}
+
+async function injectContentScripts(tabId) {
+  // The MAIN-world helper must exist before content.js evaluates feed rules.
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: METRICS_SCRIPT_FILES,
+      world: 'MAIN',
+    });
+  } catch (err) {
+    console.warn('[X Buddy] Could not inject the page metrics helper:', err);
+  }
+
+  try {
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      files: CONTENT_STYLE_FILES,
+    });
+  } catch (err) {
+    console.warn('[X Buddy] Could not inject styles:', err);
+  }
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: CONTENT_SCRIPT_FILES,
+  });
+}
+
+async function reloadStaleTab(tab) {
+  const lastReload = recoveredTabReloads.get(tab.id) || 0;
+  if (Date.now() - lastReload < STALE_TAB_RELOAD_MS) return;
+
+  // Never throw away an unsent composer draft. The activation check below
+  // retries after the draft is cleared or posted.
+  if (await tabHasDraft(tab.id)) return;
+
+  recoveredTabReloads.set(tab.id, Date.now());
+  try {
+    await chrome.tabs.reload(tab.id);
+  } catch (err) {
+    console.warn('[X Buddy] Could not reload stale tab:', err);
+  }
+}
+
+async function ensureTabContent(tab) {
+  if (!tab?.id || tab.discarded || !isXTabUrl(tab.url)) return;
+  if (recoveryInFlight.has(tab.id)) return;
+
+  recoveryInFlight.add(tab.id);
+  try {
+    if (await pingContentScript(tab.id)) return;
+
+    // A declarative injection may still be starting on a fresh document.
+    await wait(CONTENT_PING_RETRY_MS);
+    if (await pingContentScript(tab.id)) return;
+
+    if (await hasContentMarker(tab.id, CONTENT_LOADED_ATTR)) {
+      // The document still carries the marker from a content script whose
+      // chrome.* context died with the previous extension instance. It cannot
+      // recover in place, so reload once and let the new instance inject.
+      await reloadStaleTab(tab);
+      return;
+    }
+
+    if (tab.status !== 'complete') return;
+
+    // document_idle content scripts run at or just after the load event. Give
+    // the declarative copy time to start before treating it as missing.
+    await wait(CONTENT_INJECT_DELAY_MS);
+    if (await pingContentScript(tab.id)) return;
+    if (await hasContentMarker(tab.id, CONTENT_LOADED_ATTR)) return;
+
+    if (await hasContentMarker(tab.id, CONTENT_SCHEDULED_ATTR)) {
+      // The document_start marker says the declarative idle scripts are still
+      // queued for this document. Wait for them instead of injecting a second
+      // copy; a manual refresh covers the rare canceled-injection case.
+      return;
+    }
+
+    try {
+      await injectContentScripts(tab.id);
+    } catch (err) {
+      console.warn('[X Buddy] Could not inject content scripts:', err);
+    }
+  } finally {
+    recoveryInFlight.delete(tab.id);
+  }
+}
+
+async function recoverOpenTabs() {
+  if (recoveryRun) return recoveryRun;
+
+  recoveryRun = (async () => {
+    let tabs = [];
+    try {
+      tabs = await chrome.tabs.query({ url: X_TAB_URL_PATTERNS });
+    } catch (err) {
+      console.warn('[X Buddy] Could not list X tabs:', err);
+      return;
+    }
+    await Promise.allSettled(tabs.map((tab) => ensureTabContent(tab)));
+  })();
+
+  try {
+    await recoveryRun;
+  } finally {
+    recoveryRun = null;
+  }
+}
+
+function scheduleTabRecovery(delayMs = 1000) {
+  if (recoveryTimer) return;
+  recoveryTimer = setTimeout(() => {
+    recoveryTimer = null;
+    recoverOpenTabs().catch((err) => {
+      console.warn('[X Buddy] Tab recovery failed:', err);
+    });
+  }, delayMs);
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete' || !isXTabUrl(tab?.url)) return;
+  ensureTabContent(tab).catch((err) => {
+    console.warn('[X Buddy] Could not check tab content:', err);
+  });
+});
+
+// A stale tab that deferred recovery because it was being typed in gets
+// another chance when the user comes back to it.
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (isXTabUrl(tab?.url)) await ensureTabContent(tab);
+  } catch (err) {
+    console.warn('[X Buddy] Could not check the activated tab:', err);
+  }
+});
+
+// ===================================================================
+//  LIFECYCLE
+// ===================================================================
+
+chrome.runtime.onInstalled.addListener(() => {
+  setupContextMenus();
+  scheduleTabRecovery();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  setupContextMenus();
+  scheduleTabRecovery();
+});
+
+// Unpacked reloads do not always fire onInstalled, so recreate the menus and
+// recover already-open tabs when the service worker starts as well.
 setupContextMenus();
+scheduleTabRecovery();
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId !== MENU_POSITIVE && info.menuItemId !== MENU_NEGATIVE) return;

@@ -64,6 +64,10 @@ X Buddy is not on the Chrome Web Store yet, so you load it unpacked.
 
 Pin the extension to your toolbar so the popup is easy to reach.
 
+### Open tabs stay covered
+
+Chrome only runs the extension's page script when a page loads. If X was already open when Chrome or the extension started, X Buddy now checks the tab, attaches itself, and brings the features back without a refresh. After an extension update it refreshes stale tabs automatically. A tab with an unsent draft is left alone so the draft is not lost; finish or clear the draft, then switch away and back, or refresh when you are ready.
+
 ## Use it
 
 ### Highlight keywords
@@ -228,25 +232,23 @@ Each tone's instruction is saved separately and added after your Writing Voice. 
 | No glow | Check that the keyword is in the positive list and the positive toggle is on. Keywords match whole words only, so `ai` will not match `rain`. If the glow is there but hard to see, open **Settings** and pick a brighter color. |
 | A post I want to read is hidden | Check the negative list and the negative toggle. A negative keyword wins over a positive glow. Remove the word, or turn negative filtering off, to bring the post back. |
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
-| A feed rule does nothing | Refresh x.com if you just reloaded the extension — reloading an extension does not update tabs that are already open. Then check the **Feed Rules** toggle and the master toggle. `fewer than` and `more than` are strict; `between` includes both ends. Posts whose count X does not expose are left alone, and follower and following rules need the post data. A hide rule wins over a highlight rule. |
+| A feed rule does nothing | Check the **Feed Rules** toggle and the master toggle. `fewer than` and `more than` are strict; `between` includes both ends. Posts whose count X does not expose are left alone, and follower and following rules need the post data. A hide rule wins over a highlight rule. X Buddy reattaches to open tabs automatically; if a tab still looks stale after an extension update, refresh it. |
 | Follower or following rules stopped working | X may have changed how it stores post data. Comments, likes, and reposts can still use the counts visible on the page; follower and following rules need the post data. Reload the extension and check for an update. |
 | Replies are too long or too short | Move **Reply Length** in **Settings** left or right. It applies to replies only, including custom tone instructions, and overrides sentence limits written into an instruction. **Auto** lets the model choose, so pick a fixed level if its choice is off. Draft Post ignores it; adjust **Writing Voice** and **Post Examples** instead. |
 | Magic Reply button is missing | X may have switched your account to their new web layout. This version supports the classic layout. See the status below. |
-| Draft Post button is missing | Open the home or profile compose box first; the button appears once the editable composer is open. Refresh x.com after reloading the extension. If Magic Reply works but Draft Post does not, the send button may not look like a `Post` button in your layout. |
+| Draft Post button is missing | Open the home or profile compose box first; the button appears once the editable composer is open. X Buddy reattaches automatically after an extension reload; if it is still missing, refresh x.com. If Magic Reply works but Draft Post does not, the send button may not look like a `Post` button in your layout. |
 | Draft Post says **Add an idea first** | Type a rough idea or topic in the composer before clicking the button. An empty composer is not sent to the model. |
 | A Writing Voice change did not apply | Click **Save Voice**. The next request uses it; no extension reload is needed. If it still looks unchanged, check the service worker console for a storage error. |
 | Draft Post does not sound like my examples | Keep the **Writing Voice** short and specific, and put style examples in **Post Examples**, not the voice. Very long voices can be truncated. |
-| Tone menu does not open | Reload the extension at `chrome://extensions` and refresh x.com. The menu is injected next to the reply send button on the classic layout. |
+| Tone menu does not open | Reload the extension at `chrome://extensions`; open X tabs reattach automatically. If the menu still does not appear, refresh x.com. The menu is injected next to the reply send button on the classic layout. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
+| Features disappear after an extension update | X Buddy normally refreshes an open X tab to bring the new build in. A tab with an unsent draft is left alone; finish or clear the draft, then switch away and back, or refresh x.com. |
 | Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, 3, 4, and 5 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.7.1
+## What's new in 1.7.2
 
-- **Balanced** is now the default Reply Length (up to 2 sentences, 25 words). The shorter default left no room for Connect or Informative replies.
-- Replies handle sad, mean-spirited, and personal-setup cases more carefully: empathy first, no agreement with a put-down, and no invented claims about your own model or hardware.
-- The built-in **Disagree** instruction now opens with a plain different view instead of agreeing with the premise.
-- The built-in **Connect** instruction now ends with a question mark and avoids em dashes.
-- Saved old voice, Connect, and Disagree defaults upgrade automatically; hand-edited text is kept.
+- **Open X tabs recover themselves.** If X was already open before Chrome or the extension started, or the extension is updated while a tab stays open, X Buddy now reattaches without a manual refresh. A tab with an unsent composer draft is left alone so the draft is not lost; finish or clear the draft, then switch away and back, or refresh when you are ready.
+- **New `scripting` permission.** It is used only to check and reattach the page script on x.com and twitter.com tabs. The sites the extension can touch are unchanged.
 
 ## Status
 
@@ -273,7 +275,7 @@ X started testing a new web layout for logged-in users in late 2026. It removes 
 
 ## Privacy
 
-- The extension asks for `storage` so it can remember your keywords, and `contextMenus` so you can right-click text to add it to a list.
+- The extension asks for `storage` so it can remember your keywords, `contextMenus` so you can right-click text to add it to a list, and `scripting` so it can reattach its page script to X tabs that were already open when the extension started or updated. `scripting` is used only on x.com and twitter.com.
 - Feed rules read follower, following, comment, like, and repost counts from the post data X already loaded. They add no permissions and make no extra requests.
 - It can talk to `x.com`, `twitter.com`, and the local LLM server you configure (`localhost` or `127.0.0.1` only). That is it.
 - Your keyword lists, feed rules, reply length, writing voice, post examples, tone instructions, and LLM settings live in Chrome's local storage. The optional API key is stored there in plain text and is excluded from exports. The voice and examples are included in exports.
