@@ -62,11 +62,13 @@ X Buddy is not on the Chrome Web Store yet, so you load it unpacked.
 4. Pick the `x-buddy` folder
 5. Open `https://x.com`
 
-Pin the extension to your toolbar so the popup is easy to reach.
+Pin the extension to your toolbar so the popup is easy to reach. If the popup shows a **Grant access** banner, click it once and allow access to x.com and twitter.com; Chrome may have withheld site access for the unpacked extension.
 
 ### Open tabs stay covered
 
 Chrome only runs the extension's page script when a page loads. If X was already open when Chrome or the extension started, X Buddy now checks the tab, attaches itself, and brings the features back without a refresh. After an extension update it refreshes stale tabs automatically. A tab with an unsent draft is left alone so the draft is not lost; finish or clear the draft, then switch away and back, or refresh when you are ready.
+
+If the popup shows a **Grant access** banner, Chrome has withheld X Buddy's site access. Click **Grant access** and allow x.com and twitter.com. You can also set **Site access** to **On all sites** for X Buddy at `chrome://extensions`; with **On click**, the extension only works after you click its icon.
 
 ## Use it
 
@@ -229,7 +231,8 @@ Each tone's instruction is saved separately and added after your Writing Voice. 
 | `Failed — LLM endpoint or model not found` | Check the Server URL and model name. Click **Fetch Models** to see what the server offers, or type the model name manually. |
 | `Failed — LLM request timed out ...` | Increase **Timeout (seconds)** in **Settings → Local LLM**, or use a smaller model. |
 | **Fetch Models** fails | Not every server exposes `/v1/models`. Check the URL, or type the exact model name and click **Save LLM Settings** anyway. |
-| No glow | Check that the keyword is in the positive list and the positive toggle is on. Keywords match whole words only, so `ai` will not match `rain`. If the glow is there but hard to see, open **Settings** and pick a brighter color. |
+| No glow | Check that the keyword is in the positive list and the positive toggle is on. Keywords match whole words only, so `ai` will not match `rain`. If the glow is there but hard to see, open **Settings** and pick a brighter color. If X Buddy does nothing at all, check for a **Grant access** banner in the popup and allow site access. |
+| X Buddy does nothing on a tab | Open the popup. If it shows **Grant access**, click it and allow x.com and twitter.com. You can also set **Site access** to **On all sites** for X Buddy at `chrome://extensions`; **On click** means the page stays inactive until you click the icon. |
 | A post I want to read is hidden | Check the negative list and the negative toggle. A negative keyword wins over a positive glow. Remove the word, or turn negative filtering off, to bring the post back. |
 | A negative keyword is not hiding anything | Check that the negative toggle is on. Matching is whole-word, so `crypto` does not match `cryptocurrency`; add the longer form as its own keyword. A post whose text has not fully loaded, or is still collapsed behind **Show more**, may only be evaluated once. |
 | A feed rule does nothing | Check the **Feed Rules** toggle and the master toggle. `fewer than` and `more than` are strict; `between` includes both ends. Posts whose count X does not expose are left alone, and follower and following rules need the post data. A hide rule wins over a highlight rule. X Buddy reattaches to open tabs automatically; if a tab still looks stale after an extension update, refresh it. |
@@ -249,6 +252,7 @@ Each tone's instruction is saved separately and added after your Writing Voice. 
 
 - **Open X tabs recover themselves.** If X was already open before Chrome or the extension started, or the extension is updated while a tab stays open, X Buddy now reattaches without a manual refresh. A tab with an unsent composer draft is left alone so the draft is not lost; finish or clear the draft, then switch away and back, or refresh when you are ready.
 - **New `scripting` permission.** It is used only to check and reattach the page script on x.com and twitter.com tabs. The sites the extension can touch are unchanged.
+- **Site access warning.** If Chrome withheld access to X, the popup now says so and offers a one-click **Grant access** button instead of silently doing nothing. **On click** site access is the other reason the page can look inactive until you open the popup.
 
 ## Status
 

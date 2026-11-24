@@ -625,6 +625,37 @@
       margin-top: 0;
     }
 
+    .access-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding: 10px;
+      border: 1px solid #5a4300;
+      background: #241c0b;
+      border-radius: 8px;
+      color: #f0d9a8;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .access-banner[hidden] {
+      display: none;
+    }
+
+    .access-banner .access-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .access-banner .btn-outline {
+      width: auto;
+      margin: 0;
+      padding: 6px 10px;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
     .toast {
       position: fixed;
       bottom: 12px;
@@ -668,6 +699,11 @@
       <span class="dot" id="llm-dot"></span>
       <span id="llm-label">Checking…</span>
     </div>
+  </div>
+
+  <div class="access-banner" id="access-banner" hidden>
+    <span class="access-text">X Buddy does not have access to X. Grant site access to turn on highlights and filtering.</span>
+    <button class="btn-outline" id="grant-access-btn">Grant access</button>
   </div>
 
   <div id="controls">

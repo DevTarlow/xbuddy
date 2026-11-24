@@ -557,6 +557,12 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   }
 });
 
+// A withheld Site access grant can be approved from the popup or from
+// chrome://extensions. Recover open tabs as soon as x.com access arrives.
+chrome.permissions.onAdded.addListener(() => {
+  scheduleTabRecovery(0);
+});
+
 // ===================================================================
 //  LIFECYCLE
 // ===================================================================
@@ -629,6 +635,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .then((post) => sendResponse({ ok: true, post }))
       .catch((err) => sendResponse({ ok: false, error: err?.message || 'LLM request failed' }));
     return true; // async response
+  }
+
+  if (message?.type === 'xb:recover-tabs') {
+    recoverOpenTabs()
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || 'Recovery failed' }));
+    return true;
   }
 
   if (message?.type === 'xb:llm-status') {

@@ -91,6 +91,8 @@ const importBtn = document.getElementById('import-btn');
 const importInput = document.getElementById('import-input');
 const llmDot = document.getElementById('llm-dot');
 const llmLabel = document.getElementById('llm-label');
+const accessBanner = document.getElementById('access-banner');
+const grantAccessBtn = document.getElementById('grant-access-btn');
 
 // --- State ---
 let keywords = [];
@@ -126,6 +128,46 @@ function showToast(msg, type = 'info') {
     toastTimer = null;
   }, 2500);
 }
+
+// Chrome can withhold host access (Site access: On click). Without it the
+// content scripts never run, even after an extension reload, so surface it in
+// the popup instead of leaving the page silently inert.
+const X_ORIGINS = ['https://x.com/*', 'https://twitter.com/*'];
+
+async function checkSiteAccess() {
+  if (!accessBanner) return;
+  try {
+    const granted = await chrome.permissions.contains({ origins: X_ORIGINS });
+    accessBanner.hidden = granted;
+  } catch (err) {
+    console.warn('[X Buddy] Could not check site access:', err);
+    accessBanner.hidden = true;
+  }
+}
+
+grantAccessBtn?.addEventListener('click', async () => {
+  grantAccessBtn.disabled = true;
+  try {
+    const granted = await chrome.permissions.request({ origins: X_ORIGINS });
+    if (!granted) {
+      showToast('Access was not granted', 'error');
+      return;
+    }
+
+    accessBanner.hidden = true;
+    try {
+      await chrome.runtime.sendMessage({ type: 'xb:recover-tabs' });
+    } catch {
+      // The service worker also recovers on permissions.onAdded.
+    }
+    showToast('Access granted');
+  } catch (err) {
+    console.error('[X Buddy] Could not request site access:', err);
+    showToast('Set Site access to On all sites', 'error');
+  } finally {
+    grantAccessBtn.disabled = false;
+  }
+});
 
 function flashSaveFeedback(btn, text, duration = 1500) {
   if (!btn) return;
@@ -1538,5 +1580,6 @@ importInput.addEventListener('change', handleImportFile);
   renderKeywords();
   renderNegativeKeywords();
   renderFeedRules();
+  checkSiteAccess();
   checkLlmStatus();
 })();
