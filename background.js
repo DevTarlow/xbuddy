@@ -352,6 +352,14 @@ function isXTabUrl(url) {
   return /^https:\/\/(?:x|twitter)\.com\//i.test(String(url || ''));
 }
 
+// Permission changes can also arrive for the loopback LLM hosts. Only an X
+// grant should trigger a tab scan, and the granted pattern may carry a
+// subdomain or wildcard even when the manifest declares the bare host.
+function isXOriginPattern(origin) {
+  return /^(?:\*|https?):\/\/(?:\*\.)?(?:[a-z0-9-]+\.)*(?:x|twitter)\.com(?::\d+)?(?:\/.*)?$/i
+    .test(String(origin || ''));
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -443,8 +451,30 @@ async function reloadStaleTab(tab) {
   }
 }
 
+// Re-read a tab before a programmatic change. The tab passed to
+// ensureTabContent can be a second old by the time a ping retry or injection
+// delay finishes, and a new load may have started in that window.
+async function getReadyXTab(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab?.id || tab.discarded || tab.status !== 'complete' || !isXTabUrl(tab.url)) {
+      return null;
+    }
+    return tab;
+  } catch {
+    return null;
+  }
+}
+
 async function ensureTabContent(tab) {
   if (!tab?.id || tab.discarded || !isXTabUrl(tab.url)) return;
+
+  // A document that is still loading has its declarative document_start and
+  // document_idle scripts queued but not run. Injecting now would race them,
+  // and a second evaluation of shared.js would collide with its top-level
+  // consts. tabs.onUpdated calls this again when the load completes.
+  if (tab.status !== 'complete') return;
+
   if (recoveryInFlight.has(tab.id)) return;
 
   recoveryInFlight.add(tab.id);
@@ -460,11 +490,16 @@ async function ensureTabContent(tab) {
       // The document still carries a marker from a content script whose
       // chrome.* context died with the previous extension instance. It cannot
       // recover in place, so reload once and let the new instance inject.
-      await reloadStaleTab(tab);
+      // A 1.7.1 tab has only the legacy data-xb-buddy marker; it takes this
+      // same path, including the unsent-draft guard in reloadStaleTab.
+      const current = await getReadyXTab(tab.id);
+      if (current) await reloadStaleTab(current);
       return;
     }
 
-    if (tab.status !== 'complete') return;
+    // The tab may have started a load while the ping was retrying. Leave the
+    // fresh document to its declarative copy and wait for the next completion.
+    if (!(await getReadyXTab(tab.id))) return;
 
     // document_idle content scripts run at or just after the load event. Give
     // the declarative copy time to start before treating it as missing.
@@ -479,6 +514,15 @@ async function ensureTabContent(tab) {
       // copy; a manual refresh covers the rare canceled-injection case.
       return;
     }
+
+    // Final freshness check. A load that started during the injection delay
+    // would be queuing its own declarative copy right now, so check the live
+    // tab and the markers again immediately before injecting.
+    if (await pingContentScript(tab.id)) return;
+    if (!(await getReadyXTab(tab.id))) return;
+    if (await hasContentMarker(tab.id, CONTENT_LOADED_ATTR)
+        || await hasContentMarker(tab.id, LEGACY_CONTENT_ATTR)
+        || await hasContentMarker(tab.id, CONTENT_SCHEDULED_ATTR)) return;
 
     try {
       await injectContentScripts(tab.id);
@@ -541,7 +585,10 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 
 // A withheld Site access grant can be approved from the popup or from
 // chrome://extensions. Recover open tabs as soon as x.com access arrives.
-chrome.permissions.onAdded.addListener(() => {
+// Ignore grants for the loopback LLM hosts, which cannot change X tab access.
+chrome.permissions.onAdded.addListener((permissions) => {
+  const origins = Array.isArray(permissions?.origins) ? permissions.origins : [];
+  if (!origins.some(isXOriginPattern)) return;
   scheduleTabRecovery(0);
 });
 

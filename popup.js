@@ -145,6 +145,15 @@ async function checkSiteAccess() {
   }
 }
 
+// Keep the banner honest while the popup is open, whether access was granted
+// here or from chrome://extensions, and show it again if access is removed.
+chrome.permissions.onAdded.addListener(() => {
+  checkSiteAccess();
+});
+chrome.permissions.onRemoved.addListener(() => {
+  checkSiteAccess();
+});
+
 grantAccessBtn?.addEventListener('click', async () => {
   grantAccessBtn.disabled = true;
   try {
@@ -154,12 +163,15 @@ grantAccessBtn?.addEventListener('click', async () => {
       return;
     }
 
+    // Clear the warning on the grant result, then verify. If Chrome still
+    // reports access as withheld, the check brings the banner back.
     accessBanner.hidden = true;
     try {
       await chrome.runtime.sendMessage({ type: 'xb:recover-tabs' });
     } catch {
       // The service worker also recovers on permissions.onAdded.
     }
+    await checkSiteAccess();
     showToast('Access granted');
   } catch (err) {
     console.error('[X Buddy] Could not request site access:', err);
