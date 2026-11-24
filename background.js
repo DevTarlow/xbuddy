@@ -350,6 +350,10 @@ function setupContextMenus() {
 const X_TAB_URL_PATTERNS = ['https://x.com/*', 'https://twitter.com/*'];
 const CONTENT_LOADED_ATTR = 'data-xb-buddy-loaded';
 const CONTENT_SCHEDULED_ATTR = 'data-xb-buddy-scheduled';
+// Set by 1.7.1 and earlier. It is the only marker an old tab has, and the
+// first 1.7.2 service-worker start must reload that tab instead of injecting
+// a second copy of the top-level consts into the document.
+const LEGACY_CONTENT_ATTR = 'data-xb-buddy';
 const CONTENT_SCRIPT_FILES = ['shared.js', 'content.js'];
 const METRICS_SCRIPT_FILES = ['page-metrics.js'];
 const CONTENT_STYLE_FILES = ['styles.css'];
@@ -469,8 +473,9 @@ async function ensureTabContent(tab) {
     await wait(CONTENT_PING_RETRY_MS);
     if (await pingContentScript(tab.id)) return;
 
-    if (await hasContentMarker(tab.id, CONTENT_LOADED_ATTR)) {
-      // The document still carries the marker from a content script whose
+    if (await hasContentMarker(tab.id, CONTENT_LOADED_ATTR)
+        || await hasContentMarker(tab.id, LEGACY_CONTENT_ATTR)) {
+      // The document still carries a marker from a content script whose
       // chrome.* context died with the previous extension instance. It cannot
       // recover in place, so reload once and let the new instance inject.
       await reloadStaleTab(tab);
@@ -483,7 +488,8 @@ async function ensureTabContent(tab) {
     // the declarative copy time to start before treating it as missing.
     await wait(CONTENT_INJECT_DELAY_MS);
     if (await pingContentScript(tab.id)) return;
-    if (await hasContentMarker(tab.id, CONTENT_LOADED_ATTR)) return;
+    if (await hasContentMarker(tab.id, CONTENT_LOADED_ATTR)
+        || await hasContentMarker(tab.id, LEGACY_CONTENT_ATTR)) return;
 
     if (await hasContentMarker(tab.id, CONTENT_SCHEDULED_ATTR)) {
       // The document_start marker says the declarative idle scripts are still
