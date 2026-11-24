@@ -416,6 +416,33 @@ const LEGACY_VOICE_CORES = [
   ].join(' '),
 ];
 
+// A saved full prompt can have a few words edited inside the old shared core.
+// Word overlap lets resolveToneInstruction() still recognize it as a legacy
+// wrapper instead of keeping the old voice and composing it twice.
+const TONE_WORD_PATTERN = /[a-z0-9]+/g;
+
+function toneWordSet(text) {
+  return new Set(
+    (String(text || '').toLowerCase().match(TONE_WORD_PATTERN) || [])
+      .filter((word) => word.length >= 3)
+  );
+}
+
+const LEGACY_VOICE_WORD_SETS = LEGACY_VOICE_CORES.map(toneWordSet);
+
+function looksLikeLegacyVoice(text) {
+  if (typeof text !== 'string' || text.length < 200) return false;
+  const words = toneWordSet(text);
+  return LEGACY_VOICE_WORD_SETS.some((coreWords) => {
+    if (coreWords.size === 0) return false;
+    let hits = 0;
+    for (const word of coreWords) {
+      if (words.has(word)) hits++;
+    }
+    return hits / coreWords.size >= 0.85;
+  });
+}
+
 // ===== Reply tone instructions =====
 // The shared writing voice carries the style; each tone adds only the behavior
 // that makes it different. The voice is friendly and on the poster's side;
@@ -551,6 +578,30 @@ const LEGACY_TONE_PROMPTS = Object.freeze({
   ],
 });
 
+// Direction-only defaults that shipped separately from the shared voice. They
+// let a prompt with an edited legacy core still resolve to the instruction it
+// ended with. Exact full prompts are handled by LEGACY_TONE_PROMPTS above.
+function legacyDirectionFromPrompt(prompt) {
+  for (const core of LEGACY_VOICE_CORES) {
+    if (prompt.startsWith(core)) return prompt.slice(core.length).trim();
+  }
+  return '';
+}
+
+const LEGACY_TONE_DIRECTIONS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(LEGACY_TONE_PROMPTS).map(([id, prompts]) => {
+      const directions = prompts.map(legacyDirectionFromPrompt).filter(Boolean);
+      // These two shipped as direction-only defaults, so they have no core to
+      // strip from. Keep them as valid suffixes for an edited legacy intro.
+      if (id === 'connect' || id === 'disagree') {
+        directions.push(LEGACY_TONE_PROMPTS[id][0]);
+      }
+      return [id, directions];
+    })
+  )
+);
+
 function stripVoicePrefix(value) {
   for (const core of LEGACY_VOICE_CORES) {
     if (value.startsWith(core)) return value.slice(core.length).trim();
@@ -568,7 +619,31 @@ function resolveToneInstruction(tone, storedValue) {
   const stripped = stripVoicePrefix(value);
   if (stripped !== null) return stripped || tone.direction;
 
+  // Older releases stored the whole prompt, so the tone instruction sits at
+  // the end. If the shared intro was edited, the exact prefix above will not
+  // match; strip the known instruction from the end instead, but only when the
+  // prefix still looks like a legacy voice. A short custom instruction that
+  // happens to mention a default line is left alone.
+  const directions = [tone.direction, ...(LEGACY_TONE_DIRECTIONS[tone.id] || [])];
+  for (const direction of directions) {
+    if (!direction || !value.endsWith(direction)) continue;
+    const prefix = value.slice(0, -direction.length).trim();
+    if (prefix && looksLikeLegacyVoice(prefix)) return direction;
+  }
+
   return value;
+}
+
+function resolveTonePrompts(rawTonePrompts) {
+  const raw = rawTonePrompts && typeof rawTonePrompts === 'object' ? rawTonePrompts : {};
+  const resolved = {};
+  for (const tone of TONES) {
+    const value = raw[tone.id];
+    if (typeof value === 'string' && value.trim()) {
+      resolved[tone.id] = resolveToneInstruction(tone, value);
+    }
+  }
+  return resolved;
 }
 
 function composeReplySystemPrompt(voice, toneInstruction) {
@@ -587,4 +662,83 @@ function composePostSystemPrompt(voice, examples) {
 
 function composePostUserPrompt(note) {
   return `Rewrite this rough note into one finished X post in my voice. Keep its facts and point, and improve the wording and rhythm:\n\n${String(note || '').trim()}`;
+}
+
+// ===== Output cleanup =====
+// X's composer handles plain text. Models still sometimes answer with labels,
+// quote wrappers, code fences, or Markdown, so normalize the post before it is
+// pasted. Replies keep the older cleanup path.
+const POST_SOFT_LIMIT = 280;
+const POST_LABEL_PATTERN = /^(?:(?:here(?:'s| is)|this is)(?:\s+(?:a|your|the))?\s+)?(?:final\s+)?(?:post|tweet|draft|version)\s*:\s*/i;
+
+function countPostCharacters(text) {
+  return Array.from(String(text || '')).length;
+}
+
+function stripPostMarkdown(text) {
+  let out = String(text || '');
+  // Remove code ticks and the common bold form, but leave single asterisks and
+  // underscores alone: tech posts use *args, **kwargs, and __init__ as text.
+  out = out.replace(/`{1,3}([^`\n]+)`{1,3}/g, '$1');
+  out = out.replace(/\*\*([^*\n]+)\*\*/g, '$1');
+  out = out.split('\n').map((line) => line
+    .replace(/^\s{0,3}#{1,6}\s+/, '')
+    .replace(/^\s{0,3}>\s?/, '')
+    .replace(/^\s{0,3}(?:[-*+•])\s+/, '')
+    .replace(/^\s{0,3}\d+[.)]\s+/, '')
+    .replace(/[ \t]+$/g, '')
+  ).join('\n');
+  return out;
+}
+
+function stripOuterQuotes(text) {
+  return String(text || '').replace(/^["“”']([\s\S]*)["“”']$/, '$1').trim();
+}
+
+function cleanReply(text) {
+  let out = String(text || '').trim();
+  out = out.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/i, '').trim();
+  out = out.replace(/^(?:reply|response)\s*:\s*/i, '').trim();
+  out = out.replace(/^["“”'](.*)["“”']$/s, '$1').trim();
+  out = out.replace(/^(?:reply|response)\s*:\s*/i, '').trim();
+  return out;
+}
+
+function cleanPost(text) {
+  let out = String(text || '').replace(/\r\n?/g, '\n').trim();
+
+  // Remove wrappers and labels in either order, then normalize the text.
+  for (let i = 0; i < 3; i++) {
+    const before = out;
+    out = out.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/i, '').trim();
+    out = out.replace(POST_LABEL_PATTERN, '').trim();
+    out = stripOuterQuotes(out);
+    out = stripPostMarkdown(out).trim();
+    if (out === before) break;
+  }
+
+  out = out.replace(/\n{3,}/g, '\n\n').trim();
+  return out;
+}
+
+// ===== Composer surface classification =====
+// The send button's label is the strongest signal: it tells a reply dialog
+// apart from a new post, including a quote post, even when the composer embeds
+// another tweet. Route and dialog context are fallbacks for icon-only buttons.
+function classifyComposerSurface({
+  label = '',
+  pathname = '',
+  search = '',
+  isDialog = false,
+  hasReplyContext = false,
+} = {}) {
+  const text = String(label || '').toLowerCase();
+  if (text.includes('reply')) return 'reply';
+  if (text.includes('post')) return 'post';
+
+  if (/\/compose\/post/.test(pathname)) return 'post';
+  if (/\/status\//.test(pathname) || /[?&]in_reply_to=/.test(search)) return 'reply';
+
+  if (isDialog) return hasReplyContext ? 'reply' : 'post';
+  return 'post';
 }

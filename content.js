@@ -477,6 +477,7 @@ function startMutationObserver() {
       pending = false;
 
       // Always scan dialogs/composers — cheap ops, need fast response
+      cleanupStaleComposerActions();
       scanAllDialogs();
       scanInlineComposers();
 
@@ -512,6 +513,7 @@ function startSafetyChecks() {
     }
     checks++;
     scanAllPosts();
+    cleanupStaleComposerActions();
     scanAllDialogs();
     scanInlineComposers();
     if (checks >= 5) {
@@ -1006,34 +1008,25 @@ function applyRuleResult(container, metrics) {
 //  Reply surfaces get Magic Reply; new-post surfaces get Draft Post.
 // ===================================================================
 
-function isReplyRoute() {
-  return /\/status\//.test(location.pathname) ||
-    /[?&]in_reply_to=/.test(location.search);
-}
-
 // Prefer the send button's own label: it distinguishes a reply from a new post
 // even when a quote or reply modal embeds another tweet's text.
 function getComposerMode(container, { isDialog = false } = {}) {
   if (!container.querySelector('div[contenteditable="true"]')) return null;
-  if (!getSendButton(container)) return null;
 
   const sendButton = getSendButton(container);
-  const label = `${sendButton.getAttribute('aria-label') || ''} ${sendButton.textContent || ''}`.toLowerCase();
-  if (label.includes('reply')) return 'reply';
-  if (label.includes('post')) return 'post';
+  if (!sendButton) return null;
 
-  if (/\/compose\/post/.test(location.pathname)) return 'post';
-  if (isReplyRoute()) return 'reply';
-
-  if (isDialog) {
-    if (container.querySelector('[data-testid="reply"]') ||
-        container.querySelector('[data-testid="tweetText"]')) {
-      return 'reply';
-    }
-    return 'post';
-  }
-
-  return 'post';
+  const label = `${sendButton.getAttribute('aria-label') || ''} ${sendButton.textContent || ''}`;
+  return classifyComposerSurface({
+    label,
+    pathname: location.pathname,
+    search: location.search,
+    isDialog,
+    hasReplyContext: Boolean(
+      container.querySelector('[data-testid="reply"]')
+      || container.querySelector('[data-testid="tweetText"]')
+    ),
+  });
 }
 
 function ensureComposerAction(container, mode) {
@@ -1052,6 +1045,27 @@ function ensureComposerAction(container, mode) {
   container.removeAttribute(DRAFT_POST_ATTR);
 
   return injectComposerAction(container, mode);
+}
+
+// Removing a composer or reusing it for another surface can leave an action
+// button behind. Drop any wrapper whose container no longer classifies as a
+// composer; the next scan re-injects into a live one.
+function cleanupStaleComposerActions() {
+  if (!enabled) return;
+
+  for (const wrapper of document.querySelectorAll('.magic-reply-wrapper, .draft-post-wrapper')) {
+    const container = wrapper.closest(`[${MAGIC_REPLY_ATTR}], [${DRAFT_POST_ATTR}]`);
+    const isDialog = Boolean(container?.closest('div[role="dialog"], [data-testid="sheetDialog"]'));
+    if (container && getComposerMode(container, { isDialog })) continue;
+
+    wrapper.remove();
+    if (container) {
+      container.removeAttribute(MAGIC_REPLY_ATTR);
+      container.removeAttribute(DRAFT_POST_ATTR);
+    }
+  }
+
+  if (activeWrapper && !activeWrapper.isConnected) closeToneMenu();
 }
 
 function scanAllDialogs() {
@@ -1242,9 +1256,26 @@ function createToneMenu(dialog, trigger) {
   return menu;
 }
 
+const SEND_BUTTON_SELECTOR = '[data-testid="tweetButtonInline"], [data-testid="tweetButton"]';
+const SEND_BUTTON_FALLBACK = 'button[aria-label="Reply"], button[aria-label="Post"]';
+
 function getSendButton(container) {
-  return container.querySelector('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]')
-    || container.querySelector('button[aria-label="Reply"], button[aria-label="Post"]');
+  const direct = container.querySelector(SEND_BUTTON_SELECTOR);
+  if (direct) return direct;
+
+  // Without the testids, walk up from the editor so a quoted tweet's action
+  // bar cannot be mistaken for the composer's send button.
+  let node = container.querySelector('div[contenteditable="true"]');
+  for (let i = 0; node && i < 8; i++) {
+    const parent = node.parentElement;
+    if (!parent || parent === document.body) break;
+    const button = parent.querySelector(SEND_BUTTON_SELECTOR)
+      || parent.querySelector(SEND_BUTTON_FALLBACK);
+    if (button) return button;
+    node = parent;
+  }
+
+  return null;
 }
 
 function injectComposerAction(container, mode) {
@@ -1408,6 +1439,11 @@ async function handleDraftPostClick(btn, container) {
 
     const filled = await insertTextIntoComposer(textarea, post);
     if (!filled) throw new Error('Could not fill the composer');
+
+    const characters = countPostCharacters(post);
+    if (characters > POST_SOFT_LIMIT) {
+      showPageToast(`Draft is ${characters} characters — check the counter before posting`, 'info');
+    }
 
     btn.textContent = '✨ Drafted ✓';
     scheduleReset(btn, originalText, 2000);

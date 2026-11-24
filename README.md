@@ -181,7 +181,7 @@ The reply goes into the composer, not straight to X. You always get the final sa
 4. Wait a moment while your model rewrites the note into one post in your voice
 5. Edit it, then post
 
-Draft Post uses the same local model and the same **Writing Voice** as Magic Reply, plus your **Post Examples** for style. It replaces the text in the composer and never posts for you. If the composer is empty, the button says **Add an idea first** and sends no request. It creates one post, not a thread. If the home compose box is collapsed, click into it first so the button can appear.
+Draft Post uses the same local model and the same **Writing Voice** as Magic Reply, plus your **Post Examples** for style. It replaces the text in the composer and never posts for you. It strips labels, surrounding quotes, code fences, and stray Markdown the model sometimes adds. If the result is over 280 characters, X Buddy shows a warning; it never truncates your text, so you can edit it yourself. If the composer is empty, the button says **Add an idea first** and sends no request. It creates one post, not a thread. If the home compose box is collapsed, click into it first so the button can appear.
 
 ### Set reply length
 
@@ -202,8 +202,6 @@ The built-in voice is based on the `moss-tweet-voice` skill: enthusiastic and ge
 
 **Post Examples** are used only by Draft Post. They are style references, not facts to reuse. Leave the box empty to skip them. **Restore Default** brings back the built-in examples.
 
-If you edited a tone prompt in an earlier version, X Buddy keeps your wording and removes the old shared intro so it is not repeated on top of the Writing Voice.
-
 ### Edit tone instructions
 
 1. Click the X Buddy icon and expand **Settings**
@@ -211,7 +209,7 @@ If you edited a tone prompt in an earlier version, X Buddy keeps your wording an
 3. Change the tone instruction, then click **Save**
 4. Click **Restore Default** to put the built-in instruction back
 
-Each tone's instruction is saved separately and added after your Writing Voice. The Magic Reply menu uses whatever instruction is saved for the tone you pick. Built-in instructions keep the reply on the poster's side; only **Disagree** offers a different view, and it now opens with a plain disagreement instead of softening into agreement. If you saved an old built-in prompt without editing it, it now loads as the short instruction; prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
+Each tone's instruction is saved separately and added after your Writing Voice. The Magic Reply menu uses whatever instruction is saved for the tone you pick. Built-in instructions keep the reply on the poster's side; only **Disagree** offers a different view, and it now opens with a plain disagreement instead of softening into agreement. If you saved an old built-in prompt without editing it, it now loads as the short instruction. If the intro was lightly edited but the instruction at the end still matches a built-in, the old intro is dropped so the voice is not added twice. Prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
 
 <p align="center">
   <img src="glow-and-reply-tones.png" width="340" alt="X Buddy Settings showing the glow color picker, tone instruction editor, and export/import controls" />
@@ -248,11 +246,11 @@ Each tone's instruction is saved separately and added after your Writing Voice. 
 | Features disappear after an extension update | X Buddy normally refreshes an open X tab to bring the new build in. A tab with an unsent draft is left alone; finish or clear the draft, then switch away and back, or refresh x.com. |
 | Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, 3, 4, and 5 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.7.2
+## What's new in 1.7.3
 
-- **Open X tabs recover themselves.** If X was already open before Chrome or the extension started, or the extension is updated while a tab stays open, X Buddy now reattaches without a manual refresh. A tab with an unsent composer draft is left alone so the draft is not lost; finish or clear the draft, then switch away and back, or refresh when you are ready.
-- **New `scripting` permission.** It is used only to check and reattach the page script on x.com and twitter.com tabs. The sites the extension can touch are unchanged.
-- **Site access warning.** If Chrome withheld access to X, the popup now says so and offers a one-click **Grant access** button instead of silently doing nothing. **On click** site access is the other reason the page can look inactive until you open the popup.
+- **Draft Post cleanup.** Labels, surrounding quotes, code fences, and stray Markdown are removed before the draft goes into the composer. A draft over 280 characters gets a warning, not a silent cut.
+- **Composer buttons clean up.** When X reuses a composer or you move between a post and a reply, the old button is removed instead of lingering.
+- **Tone prompt upgrades handle lightly edited old intros.** An old saved prompt with a lightly edited intro and a recognizable instruction no longer duplicates the writing voice.
 
 ## Status
 

@@ -1104,7 +1104,7 @@ async function importFullConfig(data) {
     if (voice.length > VOICE_SKILL_LIMITS.maxLength) {
       importWarning = 'Writing voice in file was too long; skipped';
     } else {
-      toSet[VOICE_KEY] = normalizeVoiceSkill(voice);
+      toSet[VOICE_KEY] = resolveVoiceSkill(voice);
     }
   }
   if (typeof data.postExamples === 'string') {
@@ -1112,14 +1112,15 @@ async function importFullConfig(data) {
     if (examples.length > POST_EXAMPLES_LIMITS.maxLength) {
       importWarning = 'Post examples in file were too long; skipped';
     } else {
-      toSet[POST_EXAMPLES_KEY] = examples;
+      toSet[POST_EXAMPLES_KEY] = resolvePostExamples(examples);
     }
   }
   if (data.tonePrompts && typeof data.tonePrompts === 'object') {
+    const resolvedPrompts = resolveTonePrompts(data.tonePrompts);
     for (const tone of TONES) {
-      const prompt = data.tonePrompts[tone.id];
+      const prompt = resolvedPrompts[tone.id];
       if (typeof prompt === 'string' && prompt.trim()) {
-        toSet[TONE_PROMPT_PREFIX + tone.id] = resolveToneInstruction(tone, prompt);
+        toSet[TONE_PROMPT_PREFIX + tone.id] = prompt;
       }
     }
   }
@@ -1522,14 +1523,17 @@ replyLengthInput.addEventListener('change', async () => {
 });
 
 saveToneBtn.addEventListener('click', async () => {
-  const value = tonePromptInput.value.trim();
-  if (!value) {
+  const rawValue = tonePromptInput.value.trim();
+  if (!rawValue) {
     flashSaveFeedback(saveToneBtn, 'Instruction is empty');
     return;
   }
+
   const tone = getCurrentTone();
+  const value = resolveToneInstruction(tone, rawValue);
   if (await saveFlag(TONE_PROMPT_PREFIX + tone.id, value)) {
     tonePrompts[tone.id] = value;
+    tonePromptInput.value = value;
     flashSaveFeedback(saveToneBtn, 'Saved ✓');
   }
 });

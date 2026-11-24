@@ -117,24 +117,6 @@ async function loadReplyLength() {
   }
 }
 
-function cleanReply(text) {
-  let out = String(text || '').trim();
-  out = out.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/i, '').trim();
-  out = out.replace(/^(?:reply|response)\s*:\s*/i, '').trim();
-  out = out.replace(/^["“”'](.*)["“”']$/s, '$1').trim();
-  out = out.replace(/^(?:reply|response)\s*:\s*/i, '').trim();
-  return out;
-}
-
-function cleanPost(text) {
-  let out = String(text || '').trim();
-  out = out.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/i, '').trim();
-  out = out.replace(/^(?:post|tweet|draft)\s*:\s*/i, '').trim();
-  out = out.replace(/^["“”'](.*)["“”']$/s, '$1').trim();
-  out = out.replace(/^(?:post|tweet|draft)\s*:\s*/i, '').trim();
-  return out;
-}
-
 // Shared by Magic Reply and Draft Post. Returns the raw completion; each caller
 // applies its own cleanup.
 async function requestCompletion(settings, systemPrompt, userPrompt) {
