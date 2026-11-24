@@ -4,17 +4,18 @@ Chrome Manifest V3 extension that enhances X/Twitter with keyword highlighting, 
 
 ## Commands
 
-No build step and no package manager. Pure vanilla JS.
+No build step and no runtime dependencies. `package.json` only carries the test script.
 
 - `chrome://extensions` → Load unpacked → select this directory
-- `node --test tests/*.test.js` — fast unit tests for shared helpers and the service-worker recovery guards
+- `npm test` — fast unit tests for shared helpers and the service-worker recovery guards (`node --test tests/*.test.js`)
+- CI (`.github/workflows/ci.yml`) runs `npm test` on every push and pull request. There is nothing to install.
 
 ## Development Workflow
 
 We work one task at a time. The flow is:
 
 1. Make the change.
-2. Run `node --test tests/*.test.js`, then test it manually in Chrome (see the checklist below).
+2. Run `npm test`, then test it manually in Chrome (see the checklist below).
 3. Update `README.md` for any user-facing change (feature, setting, permission, setup step, or troubleshooting case), and whenever a change affects something the README already covers. Update `AGENTS.md` when behavior, selectors, architecture, or conventions change. Keep both current with the build.
 4. Commit when the task is done.
 5. **Push only when the user asks.** A finished commit is not a request to push.
@@ -43,7 +44,7 @@ We work one task at a time. The flow is:
 
 ### Manual test checklist
 
-Run `node --test tests/*.test.js` first. The unit tests cover the pure shared helpers and the service-worker recovery guards; before committing a behavior change, also check:
+Run `npm test` first. The unit tests cover the pure shared helpers and the service-worker recovery guards; before committing a behavior change, also check:
 
 - The extension loads at `chrome://extensions` with no errors.
 - With X already open, reloading the extension brings the features back without a manual refresh.
@@ -114,6 +115,8 @@ Run `node --test tests/*.test.js` first. The unit tests cover the pure shared he
 
 ```
 manifest.json          — MV3 manifest
+package.json           — test script only; no dependencies or build step
+.github/workflows/ci.yml — CI: runs `npm test` on every push and pull request
 page-metrics.js        — MAIN-world helper: reads tweet metrics from page React data and answers postMessage requests
 shared.js              — Shared writing voice, post examples, tone instructions, prompt composition, reply length presets, LLM defaults, feed-rule normalization, and LLM settings normalization
 popup.html             — Popup UI (340px, dark theme)
