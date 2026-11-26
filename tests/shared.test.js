@@ -14,8 +14,13 @@ const EXPORTS = [
   'LEGACY_POST_EXAMPLES',
   'LEGACY_VOICE_CORES',
   'LEGACY_TONE_PROMPTS',
+  'VOICE_BANNED_WORDS',
+  'VOICE_BANNED_PHRASES',
+  'VOICE_SKILL_LIMITS',
+  'POST_EXAMPLES_LIMITS',
   'POST_DRAFT_INSTRUCTIONS',
   'POST_EXAMPLES_INSTRUCTION',
+  'POST_CLOSER_INSTRUCTION',
   'POST_SOFT_LIMIT',
   'resolveVoiceSkill',
   'resolvePostExamples',
@@ -36,6 +41,7 @@ const tone = (id) => S.TONES.find((item) => item.id === id);
 
 test('resolveVoiceSkill upgrades saved legacy defaults but keeps custom voices', () => {
   assert.equal(S.resolveVoiceSkill(S.DEFAULT_VOICE_SKILL), S.DEFAULT_VOICE_SKILL);
+  assert.ok(S.LEGACY_VOICE_SKILLS.length >= 2, 'old base and old full default are tracked');
   for (const legacy of S.LEGACY_VOICE_SKILLS) {
     assert.equal(S.resolveVoiceSkill(legacy), S.DEFAULT_VOICE_SKILL);
   }
@@ -50,6 +56,54 @@ test('resolvePostExamples keeps an empty list empty and upgrades legacy examples
   for (const legacy of S.LEGACY_POST_EXAMPLES) {
     assert.equal(S.resolvePostExamples(legacy), S.DEFAULT_POST_EXAMPLES);
   }
+});
+
+test('the default voice, examples, and tone directions avoid em and en dashes', () => {
+  const dashFree = (text) => !/[\u2013\u2014]/.test(text);
+
+  assert.ok(dashFree(S.DEFAULT_VOICE_SKILL));
+  assert.ok(dashFree(S.DEFAULT_POST_EXAMPLES));
+  assert.ok(dashFree(S.POST_DRAFT_INSTRUCTIONS));
+  assert.ok(dashFree(S.POST_EXAMPLES_INSTRUCTION));
+  assert.ok(dashFree(S.POST_CLOSER_INSTRUCTION));
+  for (const item of S.TONES) {
+    assert.ok(dashFree(item.direction), item.id);
+  }
+});
+
+test('the default examples avoid banned voice terms and output markers', () => {
+  const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  for (const term of S.VOICE_BANNED_WORDS) {
+    assert.equal(
+      new RegExp(`\\b${escape(term)}\\b`, 'i').test(S.DEFAULT_POST_EXAMPLES),
+      false,
+      `example uses banned word: ${term}`
+    );
+  }
+  for (const phrase of S.VOICE_BANNED_PHRASES) {
+    assert.equal(
+      S.DEFAULT_POST_EXAMPLES.toLowerCase().includes(phrase.toLowerCase()),
+      false,
+      `example uses banned phrase: ${phrase}`
+    );
+  }
+  assert.equal(/#[\p{L}\p{N}_]/u.test(S.DEFAULT_POST_EXAMPLES), false);
+  assert.equal(/(^|[^\w])@[\w.]+/.test(S.DEFAULT_POST_EXAMPLES), false);
+  assert.equal(/https?:\/\/\S+/.test(S.DEFAULT_POST_EXAMPLES), false);
+});
+
+test('the default voice and examples fit the editable limits', () => {
+  assert.ok(S.DEFAULT_VOICE_SKILL.length <= S.VOICE_SKILL_LIMITS.maxLength);
+  assert.ok(S.DEFAULT_POST_EXAMPLES.length <= S.POST_EXAMPLES_LIMITS.maxLength);
+});
+
+test('the refreshed defaults replace the old brand voice and cheerleader examples', () => {
+  assert.ok(!S.DEFAULT_VOICE_SKILL.includes('MossAIStudio'));
+  assert.ok(S.DEFAULT_VOICE_SKILL.includes('direct, practical, and conversational'));
+  assert.ok(S.DEFAULT_VOICE_SKILL.includes('When writing a new post:'));
+  assert.ok(S.DEFAULT_VOICE_SKILL.includes('When replying:'));
+  assert.ok(!S.DEFAULT_POST_EXAMPLES.includes('Keep building builders'));
 });
 
 test('resolveToneInstruction upgrades every exact legacy tone prompt', () => {
@@ -145,6 +199,7 @@ test('composeReplySystemPrompt puts the voice before the tone exactly once', () 
   assert.ok(prompt.startsWith(S.DEFAULT_VOICE_SKILL));
   assert.ok(prompt.endsWith(generic.direction));
   assert.equal(prompt.split(S.DEFAULT_VOICE_SKILL).length - 1, 1);
+  assert.equal(/[\u2013\u2014]/.test(prompt), false);
 });
 
 test('composeReplySystemPrompt does not duplicate the voice after migration', () => {
@@ -166,15 +221,19 @@ test('composePostSystemPrompt includes instructions and examples only when prese
   assert.ok(withExamples.includes(S.POST_EXAMPLES_INSTRUCTION));
   assert.ok(withExamples.includes(S.DEFAULT_POST_EXAMPLES));
   assert.equal(withExamples.split(S.DEFAULT_VOICE_SKILL).length - 1, 1);
+  assert.equal(/[\u2013\u2014]/.test(withExamples), false);
 
   const withoutExamples = S.composePostSystemPrompt(S.DEFAULT_VOICE_SKILL, '');
   assert.ok(withoutExamples.includes(S.POST_DRAFT_INSTRUCTIONS));
   assert.ok(!withoutExamples.includes(S.POST_EXAMPLES_INSTRUCTION));
 });
 
-test('composePostUserPrompt keeps the note as the source text', () => {
-  assert.ok(S.composePostUserPrompt('  a rough idea  ').includes('a rough idea'));
-  assert.ok(!S.composePostUserPrompt('  a rough idea  ').includes('  a rough idea  '));
+test('composePostUserPrompt keeps the note as the source text and bans a closing cheer', () => {
+  const prompt = S.composePostUserPrompt('  a rough idea  ');
+  assert.ok(prompt.includes('a rough idea'));
+  assert.ok(!prompt.includes('  a rough idea  '));
+  assert.ok(prompt.includes(S.POST_CLOSER_INSTRUCTION));
+  assert.equal(/[\u2013\u2014]/.test(prompt), false);
 });
 
 test('cleanPost strips labels, quote wrappers, fences, and Markdown noise', () => {

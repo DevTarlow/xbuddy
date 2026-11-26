@@ -24,7 +24,7 @@
 - **Glow color.** Pick any highlight color in Settings instead of the default green.
 - **Backup.** Export keywords, toggles, glow color, feed rules, reply length, writing voice, post examples, tone instructions, and LLM settings to a JSON file, and import them on another browser.
 - **Right-click capture.** Select a word or hashtag on X and add it to either list from the context menu, with a toast confirming the add.
-- **Writing Voice.** One editable voice, built from the moss-tweet-voice skill, is added to every reply and every drafted post. Tune it in Settings, restore the built-in default, or import a skill file. Post Examples are used only when drafting an original post.
+- **Writing Voice.** One editable voice is added to every reply and every drafted post. The built-in starter is direct, practical, and conversational: concrete details, honest tradeoffs, no hype, and no AI filler. Edit it to make it yours, restore the default, or import a voice file. Post Examples are used only when drafting an original post.
 - **Magic Reply with tones.** Open a reply, pick a tone (Generic, Agree, Connect, Disagree, Funny, or Informative), and your local model writes a draft straight into the composer. Each tone is a short instruction layered on your Writing Voice, and a Reply Length slider keeps drafts short, lets them run longer, or hands the length choice to the model. You can edit the draft before posting.
 - **Draft Post.** In the home or profile compose box, or the compose window, type a rough idea and click **✨ Draft Post**. Your model rewrites it into one post in your voice. Edit it, then post; it never posts for you.
 - **Local LLM settings.** Point Magic Reply and Draft Post at any OpenAI-compatible server on `localhost` or `127.0.0.1`, choose the model, and tune temperature, max reply tokens, timeout, and thinking. An optional API key is supported.
@@ -196,11 +196,13 @@ The setting applies to replies only, including tone instructions you edit. Draft
 1. Click the X Buddy icon and expand **Settings**
 2. Under **Writing Voice**, edit the voice, then click **Save Voice**
 3. Click **Restore Default** to put the built-in voice back
-4. Click **Import .md** to load a skill file. Frontmatter is removed, and you can review the text before saving
+4. Click **Import .md** to load a voice file. Frontmatter is removed, and you can review the text before saving
 
-The built-in voice is based on the `moss-tweet-voice` skill: enthusiastic and genuine, grounded in concrete details, warm and human, encouraging, and curious, with short line breaks, no hashtags, no engagement bait, and no corporate or AI filler. It allows at most one emoji in a reply; delete that line if you want replies with none. It also names the feeling first on a sad or frustrated post, stays gentle without agreeing with a put-down, and avoids claiming a specific model, setup, or hardware that was not in the post. The voice is added before every tone instruction and before Draft Post, so editing it changes every AI draft, not just one tone.
+The built-in voice is a starter you can keep or replace. It writes the way a person talks: direct, practical, and conversational, with concrete details and honest tradeoffs. It skips hashtags, engagement bait, corporate jargon, AI filler, motivational sign-offs, and fake profundity. It allows up to two emojis in a post and one in a reply; delete that line if you want fewer. It also names the feeling first on a sad or frustrated post, stays gentle without agreeing with a put-down, and avoids claiming a specific model, setup, or hardware that was not in the post. The voice is added before every tone instruction and before Draft Post, so editing it changes every AI draft, not just one tone.
 
-**Post Examples** are used only by Draft Post. They are style references, not facts to reuse. Leave the box empty to skip them. **Restore Default** brings back the built-in examples.
+To make it yours, replace the first lines with who you are and how you write, keep the rules that make the writing sound human, and remove any that do not fit. Paste three to five of your own posts into **Post Examples** so Draft Post has your real rhythm to follow. If you already have a voice guide in Markdown, click **Import .md**. **Restore Default** brings the starter back.
+
+**Post Examples** are used only by Draft Post. Paste a few of your own posts, short ones work best. They are style references, not facts to reuse. Leave the box empty to skip them. **Restore Default** brings back the built-in examples.
 
 ### Edit tone instructions
 
@@ -240,17 +242,18 @@ Each tone's instruction is saved separately and added after your Writing Voice. 
 | Draft Post button is missing | Open the home or profile compose box first; the button appears once the editable composer is open. X Buddy reattaches automatically after an extension reload; if it is still missing, refresh x.com. If Magic Reply works but Draft Post does not, the send button may not look like a `Post` button in your layout. |
 | Draft Post says **Add an idea first** | Type a rough idea or topic in the composer before clicking the button. An empty composer is not sent to the model. |
 | A Writing Voice change did not apply | Click **Save Voice**. The next request uses it; no extension reload is needed. If it still looks unchanged, check the service worker console for a storage error. |
-| Draft Post does not sound like my examples | Keep the **Writing Voice** short and specific, and put style examples in **Post Examples**, not the voice. Very long voices can be truncated. |
+| Draft Post does not sound like my examples | Put a few of your own short posts in **Post Examples**, and keep the **Writing Voice** specific: who you are, how you sound, and the rules you care about. Remove rules that do not fit your writing. Very long voices can be truncated. |
+| Replies or drafts sound generic | Edit the first lines of the **Writing Voice** to describe you and your topics, and add a few of your own posts to **Post Examples**. The built-in voice is a starter, not a fixed style. |
 | Tone menu does not open | Reload the extension at `chrome://extensions`; open X tabs reattach automatically. If the menu still does not appear, refresh x.com. The menu is injected next to the reply send button on the classic layout. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
 | Features disappear after an extension update | X Buddy normally refreshes an open X tab to bring the new build in. A tab with an unsent draft is left alone; finish or clear the draft, then switch away and back, or refresh x.com. |
 | Import says **Invalid config file** | Use a file created by **Export All**. Import accepts X Buddy version 1, 2, 3, 4, and 5 configs, or older files with `positive` and/or `negative` arrays. |
 
-## What's new in 1.7.3
+## What's new in 1.7.4
 
-- **Draft Post cleanup.** Labels, surrounding quotes, code fences, and stray Markdown are removed before the draft goes into the composer. A draft over 280 characters gets a warning, not a silent cut.
-- **Composer buttons clean up.** When X reuses a composer or you move between a post and a reply, the old button is removed instead of lingering.
-- **Tone prompt upgrades handle lightly edited old intros.** An old saved prompt with a lightly edited intro and a recognizable instruction no longer duplicates the writing voice.
+- **New built-in Writing Voice.** The default is now direct, practical, and conversational: concrete details, honest tradeoffs, no hashtags or engagement bait, no AI filler, and no motivational closers. It applies to every Magic Reply tone and to Draft Post.
+- **Refreshed Post Examples.** The built-in examples now show a benchmark result, a tool reaction, a priced tradeoff, and a community question. The old cheerleader examples are gone.
+- **Make it yours.** The Writing Voice hint explains that the first lines are your profile and the rest are the rules, so other people can swap in their own style. Saved old defaults upgrade automatically; your own edits are kept.
 
 ## Status
 
