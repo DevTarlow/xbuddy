@@ -75,15 +75,40 @@ const tonePromptLabel = document.getElementById('tone-prompt-label');
 const tonePromptInput = document.getElementById('tone-prompt-input');
 const saveToneBtn = document.getElementById('save-tone-btn');
 const restoreToneBtn = document.getElementById('restore-tone-btn');
-const voiceSkillInput = document.getElementById('voice-skill-input');
+const deleteToneBtn = document.getElementById('delete-tone-btn');
+const toneVisibleToggle = document.getElementById('tone-visible-toggle');
+const toneFeedback = document.getElementById('tone-feedback');
+const customToneLabelInput = document.getElementById('custom-tone-label-input');
+const customToneDirectionInput = document.getElementById('custom-tone-direction-input');
+const customToneAddBtn = document.getElementById('custom-tone-add-btn');
+const voicePersonaInput = document.getElementById('voice-persona-input');
+const voiceCasingSelect = document.getElementById('voice-casing-select');
+const voiceEmojiSelect = document.getElementById('voice-emoji-select');
+const voiceHashtagSelect = document.getElementById('voice-hashtag-select');
+const voiceExclamationSelect = document.getElementById('voice-exclamation-select');
 const voiceSkillFeedback = document.getElementById('voice-skill-feedback');
 const voiceSaveBtn = document.getElementById('voice-save-btn');
 const voiceRestoreBtn = document.getElementById('voice-restore-btn');
-const voiceImportBtn = document.getElementById('voice-import-btn');
-const voiceImportInput = document.getElementById('voice-import-input');
+const voiceSamplesInput = document.getElementById('voice-samples-input');
+const voiceGenerateBtn = document.getElementById('voice-generate-btn');
+const voiceGenerateFeedback = document.getElementById('voice-generate-feedback');
+const voiceRulesInput = document.getElementById('voice-rules-input');
+const voiceRulesEnabled = document.getElementById('voice-rules-enabled');
+const voiceRulesFeedback = document.getElementById('voice-rules-feedback');
+const voiceRulesSaveBtn = document.getElementById('voice-rules-save-btn');
+const voiceRulesRestoreBtn = document.getElementById('voice-rules-restore-btn');
+const voiceRulesImportBtn = document.getElementById('voice-rules-import-btn');
+const voiceRulesImportInput = document.getElementById('voice-rules-import-input');
 const postExamplesInput = document.getElementById('post-examples-input');
 const postExamplesSaveBtn = document.getElementById('post-examples-save-btn');
 const postExamplesRestoreBtn = document.getElementById('post-examples-restore-btn');
+const replyExamplesInput = document.getElementById('reply-examples-input');
+const replyExamplesSaveBtn = document.getElementById('reply-examples-save-btn');
+const replyExamplesRestoreBtn = document.getElementById('reply-examples-restore-btn');
+const examplesTabPost = document.getElementById('examples-tab-post');
+const examplesTabReply = document.getElementById('examples-tab-reply');
+const examplesPanelPost = document.getElementById('examples-panel-post');
+const examplesPanelReply = document.getElementById('examples-panel-reply');
 const replyLengthInput = document.getElementById('reply-length-input');
 const replyLengthValue = document.getElementById('reply-length-value');
 const exportBtn = document.getElementById('export-btn');
@@ -110,8 +135,15 @@ let glowColor = DEFAULT_GLOW_COLOR;
 let settingsOpen = false;
 let llmSettings = { ...LLM_DEFAULTS };
 let tonePrompts = {};
-let voiceSkill = DEFAULT_VOICE_SKILL;
+let customTones = [];
+let hiddenToneIds = [];
+let allTones = [...TONES];
+let voicePersona = DEFAULT_VOICE_PERSONA;
+let voiceStyle = { ...DEFAULT_VOICE_STYLE };
+let voiceRules = DEFAULT_VOICE_RULES;
+let voiceRulesOn = true;
 let postExamples = DEFAULT_POST_EXAMPLES;
+let replyExamples = DEFAULT_REPLY_EXAMPLES;
 let currentToneId = DEFAULT_TONE_ID;
 let replyLength = DEFAULT_REPLY_LENGTH;
 let toastTimer = null;
@@ -215,21 +247,48 @@ function isValidHexColor(value) {
   return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
 }
 
+// --- Feedback helpers ---
+function setFeedback(el, message, isError = false) {
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('error', Boolean(message) && isError);
+}
+
+function setVoiceFeedback(message, isError = false) {
+  setFeedback(voiceSkillFeedback, message, isError);
+}
+
+function setRulesFeedback(message, isError = false) {
+  setFeedback(voiceRulesFeedback, message, isError);
+}
+
+function setToneFeedback(message, isError = false) {
+  setFeedback(toneFeedback, message, isError);
+}
+
+function setGenerateFeedback(message, isError = false) {
+  setFeedback(voiceGenerateFeedback, message, isError);
+}
+
 // --- Reply tones ---
+function isToneHidden(id) {
+  return hiddenToneIds.includes(id);
+}
+
 function getCurrentTone() {
-  return TONES.find(tone => tone.id === currentToneId)
-    || TONES.find(tone => tone.id === DEFAULT_TONE_ID)
-    || TONES[0];
+  return allTones.find(tone => tone.id === currentToneId)
+    || allTones.find(tone => tone.id === DEFAULT_TONE_ID)
+    || allTones[0];
 }
 
 function populateToneSelector() {
   const tone = getCurrentTone();
   currentToneId = tone.id;
   toneSelect.innerHTML = '';
-  for (const item of TONES) {
+  for (const item of allTones) {
     const option = document.createElement('option');
     option.value = item.id;
-    option.textContent = item.label;
+    option.textContent = isToneHidden(item.id) ? `${item.label} (hidden)` : item.label;
     toneSelect.appendChild(option);
   }
   toneSelect.value = currentToneId;
@@ -237,48 +296,335 @@ function populateToneSelector() {
 
 function updateToneEditor() {
   const tone = getCurrentTone();
+  if (!tone) return;
+
   tonePromptLabel.textContent = `Tone Instructions (${tone.label}):`;
   tonePromptInput.value = tonePrompts[tone.id] || tone.direction;
+  deleteToneBtn.hidden = !customTones.some(item => item.id === tone.id);
+
+  const visibleCount = allTones.filter(item => !isToneHidden(item.id)).length;
+  toneVisibleToggle.checked = !isToneHidden(tone.id);
+  toneVisibleToggle.disabled = toneVisibleToggle.checked && visibleCount <= 1;
+  toneVisibleToggle.title = toneVisibleToggle.disabled
+    ? 'Keep at least one tone in the Magic Reply menu'
+    : 'Show or hide this tone in the Magic Reply menu';
+  setToneFeedback('');
 }
 
-async function loadTonePrompts() {
-  const keys = TONES.map(tone => TONE_PROMPT_PREFIX + tone.id);
+async function loadToneSettings() {
   try {
-    const stored = await chrome.storage.local.get(keys);
-    for (const tone of TONES) {
-      const value = stored[TONE_PROMPT_PREFIX + tone.id];
-      tonePrompts[tone.id] = resolveToneInstruction(tone, value);
+    const stored = await chrome.storage.local.get([CUSTOM_TONES_KEY, HIDDEN_TONES_KEY]);
+    customTones = normalizeCustomTones(stored[CUSTOM_TONES_KEY]);
+    hiddenToneIds = sanitizeHiddenToneIds(stored[HIDDEN_TONES_KEY], customTones);
+    allTones = resolveToneList(customTones);
+
+    const keys = allTones.map(tone => TONE_PROMPT_PREFIX + tone.id);
+    const storedPrompts = keys.length ? await chrome.storage.local.get(keys) : {};
+    tonePrompts = {};
+    for (const tone of allTones) {
+      tonePrompts[tone.id] = resolveToneInstruction(
+        tone,
+        storedPrompts[TONE_PROMPT_PREFIX + tone.id]
+      );
     }
   } catch (e) {
-    console.error('[X Buddy] Failed to load tone instructions:', e);
-    for (const tone of TONES) tonePrompts[tone.id] = tone.direction;
+    console.error('[X Buddy] Failed to load reply tones:', e);
+    customTones = [];
+    hiddenToneIds = [];
+    allTones = [...TONES];
+    tonePrompts = Object.fromEntries(TONES.map(tone => [tone.id, tone.direction]));
   }
 }
 
-// --- Writing voice and post examples ---
-function setVoiceFeedback(message, isError = false) {
-  voiceSkillFeedback.textContent = message || '';
-  voiceSkillFeedback.classList.toggle('error', Boolean(message) && isError);
+async function addCustomTone() {
+  const label = customToneLabelInput.value.replace(/\s+/g, ' ').trim();
+  const direction = customToneDirectionInput.value.replace(/\r\n?/g, '\n').trim();
+
+  if (!label) {
+    setToneFeedback('Enter a tone name', true);
+    customToneLabelInput.focus();
+    return;
+  }
+  if (label.length > CUSTOM_TONE_LIMITS.labelMaxLength) {
+    setToneFeedback(`Tone names are capped at ${CUSTOM_TONE_LIMITS.labelMaxLength} characters`, true);
+    return;
+  }
+  if (!direction) {
+    setToneFeedback('Describe how the tone should reply', true);
+    customToneDirectionInput.focus();
+    return;
+  }
+  if (direction.length > CUSTOM_TONE_LIMITS.directionMaxLength) {
+    setToneFeedback(
+      `Tone instructions are capped at ${CUSTOM_TONE_LIMITS.directionMaxLength} characters`,
+      true
+    );
+    return;
+  }
+  if (customTones.length >= CUSTOM_TONE_LIMITS.maxTones) {
+    setToneFeedback(`Up to ${CUSTOM_TONE_LIMITS.maxTones} custom tones`, true);
+    return;
+  }
+  if (allTones.some(tone => tone.label.toLowerCase() === label.toLowerCase())) {
+    setToneFeedback('A tone with that name already exists', true);
+    return;
+  }
+
+  const id = createCustomToneId(label, allTones.map(tone => tone.id));
+  const tone = normalizeCustomTones([{ id, label, direction }])[0];
+  if (!tone) {
+    setToneFeedback('Could not add that tone', true);
+    return;
+  }
+
+  const next = [...customTones, tone];
+  const saved = await saveMany({
+    [CUSTOM_TONES_KEY]: next,
+    [TONE_PROMPT_PREFIX + tone.id]: direction,
+  });
+  if (!saved) {
+    setToneFeedback('Could not save the tone', true);
+    return;
+  }
+
+  customTones = next;
+  hiddenToneIds = hiddenToneIds.filter(hidden => hidden !== tone.id);
+  allTones = resolveToneList(customTones);
+  tonePrompts[tone.id] = direction;
+  currentToneId = tone.id;
+  customToneLabelInput.value = '';
+  customToneDirectionInput.value = '';
+  populateToneSelector();
+  updateToneEditor();
+  showToast(`Added tone "${label}"`);
 }
 
+async function deleteCurrentTone() {
+  const tone = getCurrentTone();
+  if (!tone || !customTones.some(item => item.id === tone.id)) return;
+  if (!confirm(`Delete the "${tone.label}" tone?`)) return;
+
+  const nextCustom = customTones.filter(item => item.id !== tone.id);
+  const nextHidden = hiddenToneIds.filter(id => id !== tone.id);
+
+  const saved = await saveMany({
+    [CUSTOM_TONES_KEY]: nextCustom,
+    [HIDDEN_TONES_KEY]: nextHidden,
+  });
+  if (!saved) return;
+
+  try {
+    await chrome.storage.local.remove(TONE_PROMPT_PREFIX + tone.id);
+  } catch (e) {
+    console.error('[X Buddy] Failed to remove tone instruction:', e);
+  }
+
+  customTones = nextCustom;
+  hiddenToneIds = nextHidden;
+  allTones = resolveToneList(customTones);
+  delete tonePrompts[tone.id];
+  currentToneId = DEFAULT_TONE_ID;
+  populateToneSelector();
+  updateToneEditor();
+  showToast(`Deleted tone "${tone.label}"`);
+}
+
+async function setToneVisibility(visible) {
+  const tone = getCurrentTone();
+  if (!tone) return;
+
+  const wasHidden = isToneHidden(tone.id);
+  const nextHidden = visible
+    ? hiddenToneIds.filter(id => id !== tone.id)
+    : [...hiddenToneIds, tone.id];
+
+  const visibleCount = allTones.filter(item => !nextHidden.includes(item.id)).length;
+  if (visibleCount === 0) {
+    toneVisibleToggle.checked = true;
+    setToneFeedback('Keep at least one tone in the Magic Reply menu', true);
+    return;
+  }
+
+  const sanitized = sanitizeHiddenToneIds(nextHidden, customTones);
+  const saved = await saveMany({ [HIDDEN_TONES_KEY]: sanitized });
+  if (!saved) {
+    toneVisibleToggle.checked = !wasHidden;
+    return;
+  }
+
+  hiddenToneIds = sanitized;
+  populateToneSelector();
+  updateToneEditor();
+  showToast(visible ? `Showing "${tone.label}"` : `Hiding "${tone.label}"`);
+}
+
+// --- Voice style selectors ---
+function populateVoiceStyleSelects() {
+  const selects = {
+    casing: voiceCasingSelect,
+    emojis: voiceEmojiSelect,
+    hashtags: voiceHashtagSelect,
+    exclamations: voiceExclamationSelect,
+  };
+
+  for (const [key, select] of Object.entries(selects)) {
+    select.innerHTML = '';
+    for (const optionSpec of VOICE_STYLE_OPTIONS[key]) {
+      const option = document.createElement('option');
+      option.value = optionSpec.value;
+      option.textContent = optionSpec.label;
+      select.appendChild(option);
+    }
+  }
+}
+
+function applyVoiceStyleToForm(style) {
+  const resolved = normalizeVoiceStyle(style);
+  voiceCasingSelect.value = resolved.casing;
+  voiceEmojiSelect.value = resolved.emojis;
+  voiceHashtagSelect.value = resolved.hashtags;
+  voiceExclamationSelect.value = resolved.exclamations;
+}
+
+function readVoiceStyleFromForm() {
+  return normalizeVoiceStyle({
+    casing: voiceCasingSelect.value,
+    emojis: voiceEmojiSelect.value,
+    hashtags: voiceHashtagSelect.value,
+    exclamations: voiceExclamationSelect.value,
+  });
+}
+
+// --- Voice, examples, and rules ---
 function updateVoiceEditor() {
-  voiceSkillInput.value = voiceSkill;
+  voicePersonaInput.value = voicePersona;
+  applyVoiceStyleToForm(voiceStyle);
 }
 
-function updatePostExamplesEditor() {
+function updateExamplesEditors() {
   postExamplesInput.value = postExamples;
+  replyExamplesInput.value = replyExamples;
+}
+
+function updateRulesEditor() {
+  voiceRulesInput.value = voiceRules;
+  voiceRulesEnabled.checked = voiceRulesOn;
 }
 
 async function loadVoiceSettings() {
   try {
-    const stored = await chrome.storage.local.get([VOICE_KEY, POST_EXAMPLES_KEY]);
-    voiceSkill = resolveVoiceSkill(stored[VOICE_KEY]);
+    const stored = await chrome.storage.local.get([
+      VOICE_KEY,
+      VOICE_STYLE_KEY,
+      VOICE_RULES_KEY,
+      VOICE_RULES_ENABLED_KEY,
+      POST_EXAMPLES_KEY,
+      REPLY_EXAMPLES_KEY,
+    ]);
+    voicePersona = resolveVoicePersona(stored[VOICE_KEY]);
+    voiceStyle = normalizeVoiceStyle(stored[VOICE_STYLE_KEY]);
+    voiceRules = normalizeVoiceRules(stored[VOICE_RULES_KEY]);
+    voiceRulesOn = stored[VOICE_RULES_ENABLED_KEY] !== false;
     postExamples = resolvePostExamples(stored[POST_EXAMPLES_KEY]);
+    replyExamples = resolveReplyExamples(stored[REPLY_EXAMPLES_KEY]);
   } catch (e) {
-    console.error('[X Buddy] Failed to load writing voice:', e);
-    voiceSkill = DEFAULT_VOICE_SKILL;
+    console.error('[X Buddy] Failed to load voice settings:', e);
+    voicePersona = DEFAULT_VOICE_PERSONA;
+    voiceStyle = { ...DEFAULT_VOICE_STYLE };
+    voiceRules = DEFAULT_VOICE_RULES;
+    voiceRulesOn = true;
     postExamples = DEFAULT_POST_EXAMPLES;
+    replyExamples = DEFAULT_REPLY_EXAMPLES;
   }
+}
+
+async function saveVoice() {
+  const persona = voicePersonaInput.value.replace(/\r\n?/g, '\n').trim();
+  if (!persona) {
+    setVoiceFeedback('Persona is empty', true);
+    voicePersonaInput.focus();
+    return;
+  }
+  if (persona.length > VOICE_SKILL_LIMITS.maxLength) {
+    setVoiceFeedback(
+      `Persona is too long (max ${VOICE_SKILL_LIMITS.maxLength.toLocaleString('en-US')} characters)`,
+      true
+    );
+    return;
+  }
+
+  const style = readVoiceStyleFromForm();
+  const saved = await saveMany({ [VOICE_KEY]: persona, [VOICE_STYLE_KEY]: style });
+  if (!saved) {
+    setVoiceFeedback('Could not save the voice', true);
+    return;
+  }
+
+  voicePersona = persona;
+  voiceStyle = style;
+  setVoiceFeedback('');
+  flashSaveFeedback(voiceSaveBtn, 'Saved ✓');
+}
+
+async function restoreVoice() {
+  const saved = await saveMany({
+    [VOICE_KEY]: DEFAULT_VOICE_PERSONA,
+    [VOICE_STYLE_KEY]: { ...DEFAULT_VOICE_STYLE },
+  });
+  if (!saved) {
+    setVoiceFeedback('Could not restore the voice', true);
+    return;
+  }
+
+  voicePersona = DEFAULT_VOICE_PERSONA;
+  voiceStyle = { ...DEFAULT_VOICE_STYLE };
+  voicePersonaInput.value = voicePersona;
+  applyVoiceStyleToForm(voiceStyle);
+  setVoiceFeedback('');
+  flashSaveFeedback(voiceRestoreBtn, 'Restored ✓');
+}
+
+async function saveRules() {
+  const value = voiceRulesInput.value.replace(/\r\n?/g, '\n').trim();
+  if (value.length > VOICE_RULES_LIMITS.maxLength) {
+    setRulesFeedback(
+      `Rules are too long (max ${VOICE_RULES_LIMITS.maxLength.toLocaleString('en-US')} characters)`,
+      true
+    );
+    return;
+  }
+
+  const saved = await saveMany({
+    [VOICE_RULES_KEY]: value,
+    [VOICE_RULES_ENABLED_KEY]: voiceRulesEnabled.checked,
+  });
+  if (!saved) {
+    setRulesFeedback('Could not save the rules', true);
+    return;
+  }
+
+  voiceRules = value;
+  voiceRulesOn = voiceRulesEnabled.checked;
+  setRulesFeedback('');
+  flashSaveFeedback(voiceRulesSaveBtn, 'Saved ✓');
+}
+
+async function restoreRules() {
+  const saved = await saveMany({
+    [VOICE_RULES_KEY]: DEFAULT_VOICE_RULES,
+    [VOICE_RULES_ENABLED_KEY]: true,
+  });
+  if (!saved) {
+    setRulesFeedback('Could not restore the rules', true);
+    return;
+  }
+
+  voiceRules = DEFAULT_VOICE_RULES;
+  voiceRulesOn = true;
+  voiceRulesInput.value = voiceRules;
+  voiceRulesEnabled.checked = true;
+  setRulesFeedback('');
+  flashSaveFeedback(voiceRulesRestoreBtn, 'Restored ✓');
 }
 
 function stripMarkdownFrontmatter(text) {
@@ -288,64 +634,31 @@ function stripMarkdownFrontmatter(text) {
     .trim();
 }
 
-async function handleVoiceImportFile() {
-  const file = voiceImportInput.files[0];
+async function handleRulesImportFile() {
+  const file = voiceRulesImportInput.files[0];
   if (!file) return;
 
   try {
     const text = stripMarkdownFrontmatter(await file.text());
     if (!text) {
-      setVoiceFeedback('File is empty', true);
+      setRulesFeedback('File is empty', true);
       return;
     }
-    if (text.length > VOICE_SKILL_LIMITS.maxLength) {
-      setVoiceFeedback(
-        `File is too long (max ${VOICE_SKILL_LIMITS.maxLength.toLocaleString('en-US')} characters)`,
+    if (text.length > VOICE_RULES_LIMITS.maxLength) {
+      setRulesFeedback(
+        `File is too long (max ${VOICE_RULES_LIMITS.maxLength.toLocaleString('en-US')} characters)`,
         true
       );
       return;
     }
-    voiceSkillInput.value = text;
-    setVoiceFeedback('Loaded — review and Save');
+    voiceRulesInput.value = text;
+    setRulesFeedback('Loaded — review and Save Rules');
   } catch (e) {
-    console.error('[X Buddy] Failed to read voice file:', e);
-    setVoiceFeedback('Could not read that file', true);
+    console.error('[X Buddy] Failed to read rules file:', e);
+    setRulesFeedback('Could not read that file', true);
   } finally {
-    voiceImportInput.value = '';
+    voiceRulesImportInput.value = '';
   }
-}
-
-async function saveVoiceSkill() {
-  const value = voiceSkillInput.value.replace(/\r\n?/g, '\n').trim();
-  if (!value) {
-    setVoiceFeedback('Voice is empty', true);
-    return;
-  }
-  if (value.length > VOICE_SKILL_LIMITS.maxLength) {
-    setVoiceFeedback(
-      `Voice is too long (max ${VOICE_SKILL_LIMITS.maxLength.toLocaleString('en-US')} characters)`,
-      true
-    );
-    return;
-  }
-  if (!(await saveFlag(VOICE_KEY, value))) {
-    setVoiceFeedback('Could not save the voice', true);
-    return;
-  }
-  voiceSkill = value;
-  setVoiceFeedback('');
-  flashSaveFeedback(voiceSaveBtn, 'Saved ✓');
-}
-
-async function restoreVoiceSkill() {
-  if (!(await saveFlag(VOICE_KEY, DEFAULT_VOICE_SKILL))) {
-    setVoiceFeedback('Could not restore the voice', true);
-    return;
-  }
-  voiceSkill = DEFAULT_VOICE_SKILL;
-  voiceSkillInput.value = DEFAULT_VOICE_SKILL;
-  setVoiceFeedback('');
-  flashSaveFeedback(voiceRestoreBtn, 'Restored ✓');
 }
 
 async function savePostExamples() {
@@ -365,6 +678,83 @@ async function restorePostExamples() {
   postExamples = DEFAULT_POST_EXAMPLES;
   postExamplesInput.value = DEFAULT_POST_EXAMPLES;
   flashSaveFeedback(postExamplesRestoreBtn, 'Restored ✓');
+}
+
+async function saveReplyExamples() {
+  const value = replyExamplesInput.value.replace(/\r\n?/g, '\n').trim();
+  if (value.length > REPLY_EXAMPLES_LIMITS.maxLength) {
+    showToast('Reply examples are too long', 'error');
+    flashSaveFeedback(replyExamplesSaveBtn, 'Too long');
+    return;
+  }
+  if (!(await saveFlag(REPLY_EXAMPLES_KEY, value))) return;
+  replyExamples = value;
+
+  const pairs = parseReplyExamples(value).length;
+  flashSaveFeedback(replyExamplesSaveBtn, value ? 'Saved ✓' : 'Cleared');
+  if (value && pairs === 0) {
+    showToast('Saved, but no Post:/Reply: pairs were found');
+  }
+}
+
+async function restoreReplyExamples() {
+  if (!(await saveFlag(REPLY_EXAMPLES_KEY, DEFAULT_REPLY_EXAMPLES))) return;
+  replyExamples = DEFAULT_REPLY_EXAMPLES;
+  replyExamplesInput.value = DEFAULT_REPLY_EXAMPLES;
+  flashSaveFeedback(replyExamplesRestoreBtn, 'Restored ✓');
+}
+
+async function generateVoiceFromSamples() {
+  const samples = voiceSamplesInput.value.trim();
+  if (!samples) {
+    setGenerateFeedback('Paste a few of your posts first', true);
+    voiceSamplesInput.focus();
+    return;
+  }
+  if (samples.length > VOICE_GENERATION_LIMITS.maxSamplesLength) {
+    setGenerateFeedback(
+      `Samples are too long (max ${VOICE_GENERATION_LIMITS.maxSamplesLength.toLocaleString('en-US')} characters)`,
+      true
+    );
+    return;
+  }
+  if (!llmSettings.model) {
+    setGenerateFeedback('Choose a model in Settings first', true);
+    return;
+  }
+
+  const originalText = voiceGenerateBtn.textContent;
+  voiceGenerateBtn.disabled = true;
+  voiceGenerateBtn.textContent = 'Generating…';
+  setGenerateFeedback('Asking your local model…');
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'xb:generate-voice', samples });
+    if (!response || !response.ok) {
+      throw new Error(response?.error || 'Could not generate a voice');
+    }
+
+    voicePersonaInput.value = response.voice.persona;
+    applyVoiceStyleToForm(response.voice.style);
+    setGenerateFeedback('Voice generated. Review it, then click Save Voice.');
+    voicePersonaInput.focus();
+  } catch (err) {
+    console.error('[X Buddy] Failed to generate a voice:', err);
+    setGenerateFeedback(err?.message || 'Could not generate a voice', true);
+  } finally {
+    voiceGenerateBtn.disabled = false;
+    voiceGenerateBtn.textContent = originalText;
+  }
+}
+
+function switchExamplesTab(tab) {
+  const showPost = tab !== 'reply';
+  examplesTabPost.setAttribute('aria-selected', String(showPost));
+  examplesTabReply.setAttribute('aria-selected', String(!showPost));
+  examplesTabPost.tabIndex = showPost ? 0 : -1;
+  examplesTabReply.tabIndex = showPost ? -1 : 0;
+  examplesPanelPost.hidden = !showPost;
+  examplesPanelReply.hidden = showPost;
 }
 
 function updateReplyLengthReadout(level) {
@@ -593,6 +983,17 @@ async function saveFlag(key, value) {
   } catch (e) {
     console.error(`[X Buddy] Failed to save ${key}:`, e);
     showToast('Failed to save setting', 'error');
+    return false;
+  }
+}
+
+async function saveMany(items) {
+  try {
+    await chrome.storage.local.set(items);
+    return true;
+  } catch (e) {
+    console.error('[X Buddy] Failed to save settings:', e);
+    showToast('Failed to save settings', 'error');
     return false;
   }
 }
@@ -946,7 +1347,7 @@ function prepareImportedKeywords(arr) {
 function buildConfig() {
   return {
     app: 'xbuddy',
-    version: 5,
+    version: 6,
     positive: keywords,
     negative: negativeKeywords,
     positiveEnabled,
@@ -956,8 +1357,14 @@ function buildConfig() {
     feedRules: feedRules.map((rule) => ({ ...rule })),
     feedRulesEnabled,
     replyLength,
-    voice: voiceSkill,
+    persona: voicePersona,
+    voiceStyle: { ...voiceStyle },
+    voiceRules,
+    voiceRulesEnabled: voiceRulesOn,
     postExamples,
+    replyExamples,
+    customTones: customTones.map((tone) => ({ ...tone })),
+    hiddenToneIds: [...hiddenToneIds],
     tonePrompts: { ...tonePrompts },
     llm: {
       baseUrl: llmSettings.baseUrl,
@@ -1012,10 +1419,15 @@ function refreshFromState() {
   renderNegativeKeywords();
   renderFeedRules();
   applyReplyLengthToForm();
+  populateToneSelector();
   updateToneEditor();
   updateVoiceEditor();
-  updatePostExamplesEditor();
+  updateExamplesEditors();
+  updateRulesEditor();
   setVoiceFeedback('');
+  setRulesFeedback('');
+  setGenerateFeedback('');
+  setToneFeedback('');
 }
 
 function importedLlmNumber(value, min, max) {
@@ -1111,15 +1523,60 @@ async function importFullConfig(data) {
   }
   const length = importedReplyLength(data.replyLength);
   if (length !== null) toSet[REPLY_LENGTH_KEY] = length;
-  if (typeof data.voice === 'string') {
+
+  // Version 6 splits the old single voice into persona + style + rules. Version
+  // 5 files still map `voice` to the persona; version 4 and older leave it alone.
+  if (typeof data.persona === 'string') {
+    const persona = data.persona.replace(/\r\n?/g, '\n').trim();
+    if (persona.length > VOICE_SKILL_LIMITS.maxLength) {
+      importWarning = 'Persona in file was too long; skipped';
+    } else {
+      toSet[VOICE_KEY] = resolveVoicePersona(persona);
+    }
+  } else if (data.version >= 5 && typeof data.voice === 'string') {
     const voice = data.voice.replace(/\r\n?/g, '\n').trim();
     if (voice.length > VOICE_SKILL_LIMITS.maxLength) {
       importWarning = 'Writing voice in file was too long; skipped';
     } else {
-      toSet[VOICE_KEY] = resolveVoiceSkill(voice);
+      toSet[VOICE_KEY] = resolveVoicePersona(voice);
     }
   }
-  if (typeof data.postExamples === 'string') {
+
+  if (data.version >= 6) {
+    if (data.voiceStyle && typeof data.voiceStyle === 'object') {
+      toSet[VOICE_STYLE_KEY] = normalizeVoiceStyle(data.voiceStyle);
+    }
+    if (typeof data.voiceRules === 'string') {
+      const rules = data.voiceRules.replace(/\r\n?/g, '\n').trim();
+      if (rules.length > VOICE_RULES_LIMITS.maxLength) {
+        importWarning = 'Anti-slop rules in file were too long; skipped';
+      } else {
+        toSet[VOICE_RULES_KEY] = rules;
+      }
+    }
+    if (typeof data.voiceRulesEnabled === 'boolean') {
+      toSet[VOICE_RULES_ENABLED_KEY] = data.voiceRulesEnabled;
+    }
+    if (typeof data.replyExamples === 'string') {
+      const examples = data.replyExamples.replace(/\r\n?/g, '\n').trim();
+      if (examples.length > REPLY_EXAMPLES_LIMITS.maxLength) {
+        importWarning = 'Reply examples in file were too long; skipped';
+      } else {
+        toSet[REPLY_EXAMPLES_KEY] = resolveReplyExamples(examples);
+      }
+    }
+    if (Array.isArray(data.customTones)) {
+      toSet[CUSTOM_TONES_KEY] = normalizeCustomTones(data.customTones);
+    }
+    if (Array.isArray(data.hiddenToneIds)) {
+      const tonesForHidden = Array.isArray(data.customTones)
+        ? data.customTones
+        : customTones;
+      toSet[HIDDEN_TONES_KEY] = sanitizeHiddenToneIds(data.hiddenToneIds, tonesForHidden);
+    }
+  }
+
+  if (data.version >= 5 && typeof data.postExamples === 'string') {
     const examples = data.postExamples.replace(/\r\n?/g, '\n').trim();
     if (examples.length > POST_EXAMPLES_LIMITS.maxLength) {
       importWarning = 'Post examples in file were too long; skipped';
@@ -1127,15 +1584,20 @@ async function importFullConfig(data) {
       toSet[POST_EXAMPLES_KEY] = resolvePostExamples(examples);
     }
   }
+
+  const tonesForPrompts = resolveToneList(
+    Array.isArray(data.customTones) ? data.customTones : customTones
+  );
   if (data.tonePrompts && typeof data.tonePrompts === 'object') {
-    const resolvedPrompts = resolveTonePrompts(data.tonePrompts);
-    for (const tone of TONES) {
+    const resolvedPrompts = resolveTonePrompts(data.tonePrompts, tonesForPrompts);
+    for (const tone of tonesForPrompts) {
       const prompt = resolvedPrompts[tone.id];
       if (typeof prompt === 'string' && prompt.trim()) {
         toSet[TONE_PROMPT_PREFIX + tone.id] = prompt;
       }
     }
   }
+
   if (data.llm && typeof data.llm === 'object') {
     const nextLlm = applyImportedLlmSettings(data.llm);
     if (nextLlm) toSet[LLM_SETTINGS_KEY] = nextLlm;
@@ -1156,6 +1618,11 @@ async function importFullConfig(data) {
     return;
   }
 
+  // Reload voice, examples, and tones from storage so the import uses the same
+  // resolvers as a fresh popup open.
+  await loadVoiceSettings();
+  await loadToneSettings();
+
   if (toSet[STORAGE_KEY]) keywords = [...toSet[STORAGE_KEY]];
   if (toSet[NEGATIVE_STORAGE_KEY]) negativeKeywords = [...toSet[NEGATIVE_STORAGE_KEY]];
   if (toSet[ENABLED_KEY] !== undefined) enabled = toSet[ENABLED_KEY];
@@ -1167,12 +1634,6 @@ async function importFullConfig(data) {
     feedRulesEnabled = toSet[FEED_RULES_ENABLED_KEY];
   }
   if (toSet[REPLY_LENGTH_KEY] !== undefined) replyLength = toSet[REPLY_LENGTH_KEY];
-  if (typeof toSet[VOICE_KEY] === 'string') voiceSkill = toSet[VOICE_KEY];
-  if (typeof toSet[POST_EXAMPLES_KEY] === 'string') postExamples = toSet[POST_EXAMPLES_KEY];
-  for (const tone of TONES) {
-    const key = TONE_PROMPT_PREFIX + tone.id;
-    if (typeof toSet[key] === 'string') tonePrompts[tone.id] = toSet[key];
-  }
   if (toSet[LLM_SETTINGS_KEY]) llmSettings = { ...toSet[LLM_SETTINGS_KEY] };
 
   refreshFromState();
@@ -1537,7 +1998,8 @@ replyLengthInput.addEventListener('change', async () => {
 saveToneBtn.addEventListener('click', async () => {
   const rawValue = tonePromptInput.value.trim();
   if (!rawValue) {
-    flashSaveFeedback(saveToneBtn, 'Instruction is empty');
+    setToneFeedback('Instruction is empty', true);
+    flashSaveFeedback(saveToneBtn, 'Empty');
     return;
   }
 
@@ -1546,6 +2008,7 @@ saveToneBtn.addEventListener('click', async () => {
   if (await saveFlag(TONE_PROMPT_PREFIX + tone.id, value)) {
     tonePrompts[tone.id] = value;
     tonePromptInput.value = value;
+    setToneFeedback('');
     flashSaveFeedback(saveToneBtn, 'Saved ✓');
   }
 });
@@ -1555,17 +2018,47 @@ restoreToneBtn.addEventListener('click', async () => {
   tonePromptInput.value = tone.direction;
   if (await saveFlag(TONE_PROMPT_PREFIX + tone.id, tone.direction)) {
     tonePrompts[tone.id] = tone.direction;
+    setToneFeedback('');
     flashSaveFeedback(restoreToneBtn, 'Restored ✓');
   }
 });
 
-voiceSaveBtn.addEventListener('click', saveVoiceSkill);
-voiceRestoreBtn.addEventListener('click', restoreVoiceSkill);
-voiceImportBtn.addEventListener('click', () => voiceImportInput.click());
-voiceImportInput.addEventListener('change', handleVoiceImportFile);
-voiceSkillInput.addEventListener('input', () => setVoiceFeedback(''));
+toneVisibleToggle.addEventListener('change', () => setToneVisibility(toneVisibleToggle.checked));
+deleteToneBtn.addEventListener('click', deleteCurrentTone);
+customToneAddBtn.addEventListener('click', addCustomTone);
+
+voiceSaveBtn.addEventListener('click', saveVoice);
+voiceRestoreBtn.addEventListener('click', restoreVoice);
+voiceGenerateBtn.addEventListener('click', generateVoiceFromSamples);
+voicePersonaInput.addEventListener('input', () => setVoiceFeedback(''));
+voiceCasingSelect.addEventListener('change', () => setVoiceFeedback(''));
+voiceEmojiSelect.addEventListener('change', () => setVoiceFeedback(''));
+voiceHashtagSelect.addEventListener('change', () => setVoiceFeedback(''));
+voiceExclamationSelect.addEventListener('change', () => setVoiceFeedback(''));
+
+voiceRulesSaveBtn.addEventListener('click', saveRules);
+voiceRulesRestoreBtn.addEventListener('click', restoreRules);
+voiceRulesImportBtn.addEventListener('click', () => voiceRulesImportInput.click());
+voiceRulesImportInput.addEventListener('change', handleRulesImportFile);
+voiceRulesInput.addEventListener('input', () => setRulesFeedback(''));
+voiceRulesEnabled.addEventListener('change', () => setRulesFeedback(''));
+
 postExamplesSaveBtn.addEventListener('click', savePostExamples);
 postExamplesRestoreBtn.addEventListener('click', restorePostExamples);
+replyExamplesSaveBtn.addEventListener('click', saveReplyExamples);
+replyExamplesRestoreBtn.addEventListener('click', restoreReplyExamples);
+
+examplesTabPost.addEventListener('click', () => switchExamplesTab('post'));
+examplesTabReply.addEventListener('click', () => switchExamplesTab('reply'));
+for (const [tabEl, tabName] of [[examplesTabPost, 'post'], [examplesTabReply, 'reply']]) {
+  tabEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const next = tabName === 'post' ? 'reply' : 'post';
+    switchExamplesTab(next);
+    (next === 'post' ? examplesTabPost : examplesTabReply).focus();
+  });
+}
 
 exportBtn.addEventListener('click', exportConfig);
 importBtn.addEventListener('click', () => importInput.click());
@@ -1574,12 +2067,15 @@ importInput.addEventListener('change', handleImportFile);
 // --- Init ---
 (async function init() {
   await loadState();
-  await loadTonePrompts();
   await loadVoiceSettings();
+  await loadToneSettings();
+  populateVoiceStyleSelects();
   populateToneSelector();
   updateToneEditor();
   updateVoiceEditor();
-  updatePostExamplesEditor();
+  updateExamplesEditors();
+  updateRulesEditor();
+  switchExamplesTab('post');
   populateFeedRuleSelectors();
   masterToggle.checked = enabled;
   positiveToggle.checked = positiveEnabled;

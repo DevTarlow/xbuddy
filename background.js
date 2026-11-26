@@ -69,19 +69,23 @@ async function llmHttpError(resp) {
   return new Error(`LLM returned HTTP ${resp.status}${detail ? ` — ${detail}` : ''}`);
 }
 
-function getTone(toneId) {
-  return TONES.find((tone) => tone.id === toneId)
-    || TONES.find((tone) => tone.id === DEFAULT_TONE_ID)
-    || TONES[0];
-}
-
-async function loadVoiceSkill() {
+async function loadVoiceConfig() {
   try {
-    const stored = await chrome.storage.local.get(VOICE_KEY);
-    return resolveVoiceSkill(stored[VOICE_KEY]);
+    const stored = await chrome.storage.local.get([
+      VOICE_KEY,
+      VOICE_RULES_KEY,
+      VOICE_RULES_ENABLED_KEY,
+      VOICE_STYLE_KEY,
+    ]);
+    return resolveVoiceSettings({
+      persona: stored[VOICE_KEY],
+      rules: stored[VOICE_RULES_KEY],
+      rulesEnabled: stored[VOICE_RULES_ENABLED_KEY],
+      style: stored[VOICE_STYLE_KEY],
+    });
   } catch (err) {
-    console.warn('[X Buddy] Could not load writing voice:', err);
-    return DEFAULT_VOICE_SKILL;
+    console.warn('[X Buddy] Could not load voice settings:', err);
+    return resolveVoiceSettings({});
   }
 }
 
@@ -95,16 +99,48 @@ async function loadPostExamples() {
   }
 }
 
-async function loadToneInstruction(toneId) {
-  const tone = getTone(toneId);
-  const key = TONE_PROMPT_PREFIX + tone.id;
+async function loadReplyExamples() {
   try {
-    const stored = await chrome.storage.local.get(key);
-    return resolveToneInstruction(tone, stored[key]);
+    const stored = await chrome.storage.local.get(REPLY_EXAMPLES_KEY);
+    return resolveReplyExamples(stored[REPLY_EXAMPLES_KEY]);
+  } catch (err) {
+    console.warn('[X Buddy] Could not load reply examples:', err);
+    return DEFAULT_REPLY_EXAMPLES;
+  }
+}
+
+async function loadTone(toneId) {
+  let customTones = [];
+  let hiddenToneIds = [];
+  try {
+    const stored = await chrome.storage.local.get([CUSTOM_TONES_KEY, HIDDEN_TONES_KEY]);
+    customTones = stored[CUSTOM_TONES_KEY];
+    hiddenToneIds = stored[HIDDEN_TONES_KEY];
+  } catch (err) {
+    console.warn('[X Buddy] Could not load reply tones:', err);
+  }
+
+  const tones = resolveVisibleTones(customTones, hiddenToneIds);
+  const tone = tones.find((item) => item.id === toneId)
+    || tones.find((item) => item.id === DEFAULT_TONE_ID)
+    || tones[0];
+
+  if (!tone) {
+    return { id: DEFAULT_TONE_ID, label: 'Generic', direction: TONES[0].direction };
+  }
+
+  const key = TONE_PROMPT_PREFIX + tone.id;
+  let storedPrompt = {};
+  try {
+    storedPrompt = await chrome.storage.local.get(key);
   } catch (err) {
     console.warn('[X Buddy] Could not load tone instruction:', err);
-    return tone.direction;
   }
+
+  return {
+    ...tone,
+    direction: resolveToneInstruction(tone, storedPrompt[key]),
+  };
 }
 
 async function loadReplyLength() {
@@ -117,13 +153,25 @@ async function loadReplyLength() {
   }
 }
 
+function toMessageTurns(turns) {
+  return turns.flatMap((turn) => [
+    { role: 'user', content: turn.user },
+    { role: 'assistant', content: turn.assistant },
+  ]);
+}
+
+function withExamplesCaveat(systemPrompt, turns) {
+  return turns.length ? `${systemPrompt}\n\n${EXAMPLES_CAVEAT}` : systemPrompt;
+}
+
 // Shared by Magic Reply and Draft Post. Returns the raw completion; each caller
 // applies its own cleanup.
-async function requestCompletion(settings, systemPrompt, userPrompt) {
+async function requestCompletion(settings, systemPrompt, userPrompt, turns = []) {
   const body = JSON.stringify({
     model: settings.model,
     messages: [
       { role: 'system', content: systemPrompt },
+      ...turns,
       { role: 'user', content: userPrompt },
     ],
     temperature: settings.temperature,
@@ -175,7 +223,41 @@ async function requestCompletion(settings, systemPrompt, userPrompt) {
   throw new Error('Unexpected LLM response');
 }
 
-async function generateReply(postText, toneId) {
+// Clean once, then allow exactly one rewrite when a banned stock phrase slips
+// through. If the rewrite is still dirty, strip the phrase as a last resort.
+async function completeCleanText({
+  settings,
+  systemPrompt,
+  userPrompt,
+  turns,
+  clean,
+  cleanOptions,
+}) {
+  const first = clean(
+    await requestCompletion(settings, systemPrompt, userPrompt, turns),
+    cleanOptions
+  );
+  if (!first) throw new Error('Unexpected LLM response');
+
+  const banned = findBannedPhrases(first);
+  if (banned.length === 0) return first;
+
+  const retryPrompt = buildBannedRetryPrompt(userPrompt, banned);
+  const second = clean(
+    await requestCompletion(settings, systemPrompt, retryPrompt, turns),
+    cleanOptions
+  );
+  if (!second) throw new Error('Unexpected LLM response');
+
+  const remaining = findBannedPhrases(second);
+  if (remaining.length === 0) return second;
+
+  const stripped = stripBannedPhrases(second);
+  if (!stripped) throw new Error('Unexpected LLM response');
+  return stripped;
+}
+
+async function generateReply(postText, toneId, nudgeId) {
   const post = String(postText || '').trim().slice(0, 6000);
   if (!post) throw new Error('No post text to reply to');
 
@@ -183,21 +265,32 @@ async function generateReply(postText, toneId) {
   if (!settings.model) {
     throw new Error('No model selected — choose one in Settings');
   }
-  const [voice, toneInstruction, replyLength] = await Promise.all([
-    loadVoiceSkill(),
-    loadToneInstruction(toneId),
-    loadReplyLength(),
-  ]);
-  const systemPrompt = composeReplySystemPrompt(voice, toneInstruction);
-  const userPrompt = `Write a reply to this post:\n\n${post}\n\n${buildReplyLengthInstruction(replyLength)}`;
 
-  const content = await requestCompletion(settings, systemPrompt, userPrompt);
-  const reply = cleanReply(content);
-  if (!reply) throw new Error('Unexpected LLM response');
-  return reply;
+  const [voice, tone, replyLength, replyExamples] = await Promise.all([
+    loadVoiceConfig(),
+    loadTone(toneId),
+    loadReplyLength(),
+    loadReplyExamples(),
+  ]);
+
+  const turns = toMessageTurns(parseReplyExamples(replyExamples));
+  const systemPrompt = withExamplesCaveat(
+    composeReplySystemPrompt(voice, tone.direction),
+    turns
+  );
+  const userPrompt = composeReplyUserPrompt(post, replyLength, nudgeId);
+
+  return completeCleanText({
+    settings,
+    systemPrompt,
+    userPrompt,
+    turns,
+    clean: cleanReply,
+    cleanOptions: { allowHashtags: voice.style.hashtags === 'allow' },
+  });
 }
 
-async function generatePost(note) {
+async function generatePost(note, nudgeId) {
   const source = String(note || '').trim().slice(0, 4000);
   if (!source) throw new Error('No text to draft from');
 
@@ -205,14 +298,40 @@ async function generatePost(note) {
   if (!settings.model) {
     throw new Error('No model selected — choose one in Settings');
   }
-  const [voice, examples] = await Promise.all([loadVoiceSkill(), loadPostExamples()]);
-  const systemPrompt = composePostSystemPrompt(voice, examples);
-  const userPrompt = composePostUserPrompt(source);
 
-  const content = await requestCompletion(settings, systemPrompt, userPrompt);
-  const post = cleanPost(content);
-  if (!post) throw new Error('Unexpected LLM response');
-  return post;
+  const [voice, postExamples] = await Promise.all([loadVoiceConfig(), loadPostExamples()]);
+  const turns = toMessageTurns(parsePostExamples(postExamples));
+  const systemPrompt = withExamplesCaveat(composePostSystemPrompt(voice), turns);
+  const userPrompt = composePostUserPrompt(source, nudgeId);
+
+  return completeCleanText({
+    settings,
+    systemPrompt,
+    userPrompt,
+    turns,
+    clean: cleanPost,
+    cleanOptions: { allowHashtags: voice.style.hashtags === 'allow' },
+  });
+}
+
+async function generateVoice(samples) {
+  const text = String(samples || '').trim().slice(0, VOICE_GENERATION_LIMITS.maxSamplesLength);
+  if (!text) throw new Error('Paste a few of your posts first');
+
+  const settings = await resolveLlmSettings();
+  if (!settings.model) {
+    throw new Error('No model selected — choose one in Settings');
+  }
+
+  const content = await requestCompletion(
+    { ...settings, maxTokens: Math.max(settings.maxTokens, VOICE_GENERATION_LIMITS.maxTokens) },
+    VOICE_FROM_SAMPLES_SYSTEM,
+    `${VOICE_FROM_SAMPLES_USER}${text}`
+  );
+
+  const voice = parseGeneratedVoice(content);
+  if (!voice) throw new Error('Could not read a voice from the model — try again');
+  return voice;
 }
 
 async function fetchLlmModels(settings) {
@@ -653,16 +772,23 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'xb:generate-reply') {
-    generateReply(message.postText, message.toneId)
+    generateReply(message.postText, message.toneId, message.nudge)
       .then((reply) => sendResponse({ ok: true, reply }))
       .catch((err) => sendResponse({ ok: false, error: err?.message || 'LLM request failed' }));
     return true; // async response
   }
 
   if (message?.type === 'xb:generate-post') {
-    generatePost(message.note)
+    generatePost(message.note, message.nudge)
       .then((post) => sendResponse({ ok: true, post }))
       .catch((err) => sendResponse({ ok: false, error: err?.message || 'LLM request failed' }));
+    return true; // async response
+  }
+
+  if (message?.type === 'xb:generate-voice') {
+    generateVoice(message.samples)
+      .then((voice) => sendResponse({ ok: true, voice }))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || 'Could not generate a voice' }));
     return true; // async response
   }
 

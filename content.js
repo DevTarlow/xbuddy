@@ -80,6 +80,8 @@ let activeMenuEl = null;
 let activeWrapper = null;
 let toneMenuCloseHandler = null;
 let toneMenuKeyHandler = null;
+let activeTones = [...TONES];
+let nudgeBar = null;
 
 // Debug logging toggle — set to true to see what the extension is doing
 const DEBUG = false;
@@ -217,6 +219,19 @@ async function loadSettings() {
   }
   applyGlowColor(glowColor);
   syncDebugAttributes();
+  await loadTones();
+}
+
+// Custom tones and hidden ids live in shared storage; resolve the visible list
+// once here so the menu and the reply handler agree.
+async function loadTones() {
+  try {
+    const stored = await chrome.storage.local.get([CUSTOM_TONES_KEY, HIDDEN_TONES_KEY]);
+    activeTones = resolveVisibleTones(stored[CUSTOM_TONES_KEY], stored[HIDDEN_TONES_KEY]);
+  } catch (err) {
+    console.warn('[X Buddy] Could not load reply tones:', err);
+    activeTones = [...TONES];
+  }
 }
 
 function listenForStorageChanges() {
@@ -248,6 +263,12 @@ function listenForStorageChanges() {
     }
 
     if (!enabled) return;
+
+    if (changes[CUSTOM_TONES_KEY] !== undefined || changes[HIDDEN_TONES_KEY] !== undefined) {
+      loadTones()
+        .then(() => closeToneMenu())
+        .catch((err) => console.warn('[X Buddy] Could not reload reply tones:', err));
+    }
 
     if (changes[POSITIVE_ENABLED_KEY] !== undefined) {
       positiveEnabled = changes[POSITIVE_ENABLED_KEY].newValue !== false;
@@ -317,6 +338,7 @@ function disableExtension() {
   resetPostProcessing();
 
   closeToneMenu();
+  removeNudgeBar();
   document.querySelectorAll('.magic-reply-wrapper, .draft-post-wrapper').forEach((el) => el.remove());
   document.querySelectorAll('.magic-reply-btn, .draft-post-btn').forEach((el) => el.remove());
   document.querySelectorAll(`[${MAGIC_REPLY_ATTR}], [${DRAFT_POST_ATTR}]`).forEach((el) => {
@@ -1065,6 +1087,15 @@ function cleanupStaleComposerActions() {
     }
   }
 
+  if (nudgeBar) {
+    const container = nudgeBar._container;
+    const isDialog = Boolean(container?.closest('div[role="dialog"], [data-testid="sheetDialog"]'));
+    const mode = container && container.isConnected
+      ? getComposerMode(container, { isDialog })
+      : null;
+    if (!mode || mode !== nudgeBar._state.mode) removeNudgeBar();
+  }
+
   if (activeWrapper && !activeWrapper.isConnected) closeToneMenu();
 }
 
@@ -1223,7 +1254,7 @@ function createToneMenu(dialog, trigger) {
   menu.style.top = `${rect.bottom + 4}px`;
   menu.style.zIndex = '2147483647';
 
-  for (const tone of TONES) {
+  for (const tone of activeTones) {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'magic-reply-dropdown-item';
@@ -1308,14 +1339,15 @@ function injectComposerAction(container, mode) {
 
 async function handleMagicReplyClick(btn, dialog, toneId) {
   if (!enabled) return;
+  removeNudgeBar();
   if (btn._resetTimer) {
     clearTimeout(btn._resetTimer);
     btn._resetTimer = null;
   }
 
-  const tone = TONES.find((t) => t.id === toneId)
-    || TONES.find((t) => t.id === DEFAULT_TONE_ID)
-    || TONES[0];
+  const tone = activeTones.find((t) => t.id === toneId)
+    || activeTones.find((t) => t.id === DEFAULT_TONE_ID)
+    || activeTones[0];
   const originalText = btn.textContent;
 
   // 1. Extract post text. Prefer a tweet body inside the container (reply
@@ -1377,6 +1409,8 @@ async function handleMagicReplyClick(btn, dialog, toneId) {
       throw new Error('Could not fill reply box');
     }
 
+    showNudgeBar(dialog, { mode: 'reply', toneId: tone.id, sourceText: postText });
+
     // 5. Done — reset button after delay
     btn.textContent = '✨ Reply Injected ✓';
     scheduleReset(btn, originalText, 2000);
@@ -1396,6 +1430,7 @@ async function handleMagicReplyClick(btn, dialog, toneId) {
 
 async function handleDraftPostClick(btn, container) {
   if (!enabled) return;
+  removeNudgeBar();
   if (btn._resetTimer) {
     clearTimeout(btn._resetTimer);
     btn._resetTimer = null;
@@ -1445,6 +1480,8 @@ async function handleDraftPostClick(btn, container) {
       showPageToast(`Draft is ${characters} characters — check the counter before posting`, 'info');
     }
 
+    showNudgeBar(container, { mode: 'post', sourceText: note });
+
     btn.textContent = '✨ Drafted ✓';
     scheduleReset(btn, originalText, 2000);
   } catch (err) {
@@ -1454,6 +1491,189 @@ async function handleDraftPostClick(btn, container) {
     scheduleReset(btn, originalText, 3000);
   } finally {
     btn.disabled = false;
+  }
+}
+
+// ===================================================================
+//  NUDGE PILLS
+//  After a draft lands, show one-click steering without touching settings.
+// ===================================================================
+const NUDGE_DISMISS_MS = 30000;
+
+function removeNudgeBar() {
+  if (!nudgeBar) return;
+
+  if (nudgeBar._dismissTimer) clearTimeout(nudgeBar._dismissTimer);
+  if (nudgeBar._docClick) {
+    document.removeEventListener('click', nudgeBar._docClick, true);
+  }
+  if (nudgeBar._keyHandler) {
+    document.removeEventListener('keydown', nudgeBar._keyHandler);
+  }
+  if (nudgeBar._reposition) {
+    window.removeEventListener('scroll', nudgeBar._reposition, true);
+    window.removeEventListener('resize', nudgeBar._reposition);
+  }
+
+  nudgeBar.remove();
+  nudgeBar = null;
+}
+
+function positionNudgeBar(bar, container) {
+  if (!bar.isConnected || !container || !container.isConnected) {
+    removeNudgeBar();
+    return;
+  }
+
+  const rect = container.getBoundingClientRect();
+  const margin = 8;
+  const width = bar.offsetWidth;
+  const height = bar.offsetHeight;
+
+  let left = Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin);
+  left = Math.max(margin, left);
+
+  let top = rect.bottom + 6;
+  if (top + height > window.innerHeight - margin) {
+    top = rect.top - height - 6;
+  }
+  top = Math.max(margin, Math.min(top, window.innerHeight - height - margin));
+
+  bar.style.left = `${left}px`;
+  bar.style.top = `${top}px`;
+}
+
+function setNudgeBusy(bar, busy, activeId = '') {
+  if (!bar) return;
+  bar._busy = busy;
+
+  for (const pill of bar.querySelectorAll('.xb-nudge-pill')) {
+    pill.disabled = busy;
+    if (busy && pill.dataset.nudge === activeId) {
+      if (!pill._originalText) pill._originalText = pill.textContent;
+      pill.textContent = `${pill._originalText}…`;
+    } else if (pill._originalText) {
+      pill.textContent = pill._originalText;
+    }
+  }
+}
+
+function showNudgeBar(container, state) {
+  removeNudgeBar();
+  if (!container || !state) return;
+
+  const bar = document.createElement('div');
+  bar.className = 'xb-nudge-bar';
+  bar.setAttribute('role', 'toolbar');
+  bar.setAttribute('aria-label', 'Refine draft');
+  bar._container = container;
+  bar._state = state;
+  bar._busy = false;
+
+  for (const nudge of NUDGE_INSTRUCTIONS) {
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'xb-nudge-pill';
+    pill.dataset.nudge = nudge.id;
+    pill.textContent = nudge.label;
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleNudgeClick(nudge.id);
+    });
+    bar.appendChild(pill);
+  }
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'xb-nudge-close';
+  close.textContent = '×';
+  close.title = 'Dismiss';
+  close.setAttribute('aria-label', 'Dismiss draft suggestions');
+  close.addEventListener('click', (e) => {
+    e.stopPropagation();
+    removeNudgeBar();
+  });
+  bar.appendChild(close);
+
+  document.body.appendChild(bar);
+  nudgeBar = bar;
+  positionNudgeBar(bar, container);
+
+  const reposition = () => positionNudgeBar(bar, container);
+  bar._reposition = reposition;
+  window.addEventListener('scroll', reposition, true);
+  window.addEventListener('resize', reposition);
+
+  const onDocClick = (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]')) {
+      removeNudgeBar();
+      return;
+    }
+    if (bar.contains(e.target) || container.contains(e.target)) return;
+    removeNudgeBar();
+  };
+  bar._docClick = onDocClick;
+  setTimeout(() => {
+    if (nudgeBar === bar) document.addEventListener('click', onDocClick, true);
+  }, 0);
+
+  const onKey = (e) => {
+    if (e.key === 'Escape') removeNudgeBar();
+  };
+  bar._keyHandler = onKey;
+  document.addEventListener('keydown', onKey);
+
+  bar._dismissTimer = setTimeout(() => {
+    if (nudgeBar === bar) removeNudgeBar();
+  }, NUDGE_DISMISS_MS);
+}
+
+async function handleNudgeClick(nudgeId) {
+  const bar = nudgeBar;
+  if (!bar || bar._busy || !enabled) return;
+
+  const state = bar._state;
+  const container = bar._container;
+  if (!state || !container) return;
+
+  const textarea = container.querySelector('div[contenteditable="true"]');
+  if (!textarea) {
+    removeNudgeBar();
+    return;
+  }
+
+  setNudgeBusy(bar, true, nudgeId);
+
+  try {
+    const text = state.mode === 'reply'
+      ? await generateReply(state.sourceText, state.toneId, nudgeId)
+      : await generatePost(state.sourceText, nudgeId);
+
+    // The master toggle may have paused the extension while the LLM worked.
+    if (!enabled) return;
+    if (!bar.isConnected || !container.isConnected) return;
+
+    // React may have replaced the composer while the request was in flight.
+    const current = container.querySelector('div[contenteditable="true"]') || textarea;
+    if (!current.isConnected) throw new Error('Composer closed — try again');
+
+    const filled = await insertTextIntoComposer(current, text);
+    if (!filled) throw new Error('Could not fill the composer');
+
+    if (state.mode === 'post') {
+      const characters = countPostCharacters(text);
+      if (characters > POST_SOFT_LIMIT) {
+        showPageToast(`Draft is ${characters} characters — check the counter before posting`, 'info');
+      }
+    }
+
+    positionNudgeBar(bar, container);
+  } catch (err) {
+    console.warn('[X Buddy] Nudge error:', err);
+    showPageToast(`Could not refine: ${err.message || 'Error'}`, 'error');
+  } finally {
+    if (nudgeBar === bar) setNudgeBusy(bar, false);
   }
 }
 
@@ -1514,12 +1734,17 @@ function extractPostText(dialog) {
   return '';
 }
 
-async function generateReply(postText, toneId) {
+async function generateReply(postText, toneId, nudgeId) {
   // The request is proxied through background.js. A content script request to
   // http://localhost is blocked by Chrome's Local Network Access policy.
   let response;
   try {
-    response = await chrome.runtime.sendMessage({ type: 'xb:generate-reply', postText, toneId });
+    response = await chrome.runtime.sendMessage({
+      type: 'xb:generate-reply',
+      postText,
+      toneId,
+      nudge: nudgeId,
+    });
   } catch {
     throw new Error('Background unavailable — reload the extension');
   }
@@ -1531,12 +1756,12 @@ async function generateReply(postText, toneId) {
   return reply;
 }
 
-async function generatePost(note) {
+async function generatePost(note, nudgeId) {
   // Same proxying reason as generateReply: localhost is reachable from the
   // service worker, not from the page's content script.
   let response;
   try {
-    response = await chrome.runtime.sendMessage({ type: 'xb:generate-post', note });
+    response = await chrome.runtime.sendMessage({ type: 'xb:generate-post', note, nudge: nudgeId });
   } catch {
     throw new Error('Background unavailable — reload the extension');
   }

@@ -485,7 +485,7 @@
 
     .collapsible-body {
       overflow: hidden;
-      max-height: 4000px;
+      max-height: 9000px;
       transition: max-height 0.3s ease;
     }
 
@@ -684,6 +684,89 @@
     .toast.visible {
       opacity: 1;
     }
+
+    .style-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .style-field label {
+      display: block;
+      font-size: 11px;
+      color: #8a8f9a;
+      margin-bottom: 4px;
+    }
+
+    .style-field select {
+      width: 100%;
+      min-width: 0;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #2a2d35;
+      background: #1a1d23;
+      color: #e1e3e6;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .style-field select:focus {
+      border-color: #00ff41;
+    }
+
+    .tab-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #2a2d35;
+      background: #1a1d23;
+      color: #8a8f9a;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+
+    .tab-btn:hover {
+      color: #e1e3e6;
+    }
+
+    .tab-btn[aria-selected="true"] {
+      border-color: #00ff41;
+      background: #00ff41;
+      color: #111318;
+      font-weight: 600;
+    }
+
+    .tab-panel[hidden] {
+      display: none;
+    }
+
+    .voice-advanced {
+      margin: 12px 0 4px;
+      border-top: 1px solid #2a2d35;
+      padding-top: 10px;
+    }
+
+    .voice-advanced > summary {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6a6e79;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+
+    .voice-advanced > summary:hover {
+      color: #00ff41;
+    }
   </style>
 </head>
 <body>
@@ -867,24 +950,81 @@
 
         <hr class="separator" />
 
-        <label class="settings-label" for="voice-skill-input" style="display: block; margin-top: 10px;">Writing Voice:</label>
-        <div class="section-hint" style="margin-bottom: 8px;">Used for every Magic Reply and Draft Post. The first lines describe who you are; the rules below keep the writing human. Edit it to make the extension sound like you, or import a voice file.</div>
-        <textarea id="voice-skill-input" rows="8" spellcheck="false" placeholder="Describe how you write on X…"></textarea>
+        <div class="settings-label" style="margin-top: 10px;">Your Persona:</div>
+        <div class="section-hint" style="margin-bottom: 8px;">Who you are and how you write. This is the first thing the model sees for every Magic Reply and Draft Post. Dashes, Markdown, and hashtags (when off) are cleaned from output automatically.</div>
+        <textarea id="voice-persona-input" rows="4" spellcheck="false" placeholder="Describe who you are and how you write on X…"></textarea>
+        <div class="style-grid">
+          <div class="style-field">
+            <label for="voice-casing-select">Casing</label>
+            <select id="voice-casing-select" aria-label="Casing"></select>
+          </div>
+          <div class="style-field">
+            <label for="voice-emoji-select">Emojis</label>
+            <select id="voice-emoji-select" aria-label="Emojis"></select>
+          </div>
+          <div class="style-field">
+            <label for="voice-hashtag-select">Hashtags</label>
+            <select id="voice-hashtag-select" aria-label="Hashtags"></select>
+          </div>
+          <div class="style-field">
+            <label for="voice-exclamation-select">Exclamation marks</label>
+            <select id="voice-exclamation-select" aria-label="Exclamation marks"></select>
+          </div>
+        </div>
+        <div class="section-hint" style="margin-bottom: 8px;">Hashtags set to Off are also removed from the final text.</div>
         <div class="section-hint" id="voice-skill-feedback" role="status" aria-live="polite"></div>
-        <div class="action-row" style="margin-bottom: 8px;">
-          <button class="btn-outline" id="voice-import-btn">Import .md</button>
-          <button class="btn-outline" id="voice-restore-btn">Restore Default</button>
-        </div>
         <button class="btn-primary" id="voice-save-btn">Save Voice</button>
-        <input type="file" accept=".md,.txt,text/markdown,text/plain" id="voice-import-input" hidden />
-
-        <label class="settings-label" for="post-examples-input" style="display: block; margin-top: 14px;">Post Examples:</label>
-        <div class="section-hint" style="margin-bottom: 8px;">Used only by Draft Post. Paste a few of your own posts (short ones work best); they are style references, not facts to reuse. Leave empty to skip them.</div>
-        <textarea id="post-examples-input" rows="5" spellcheck="false" placeholder="Paste a few example posts…"></textarea>
-        <div class="action-row">
-          <button class="btn-outline" id="post-examples-restore-btn">Restore Default</button>
-          <button class="btn-outline" id="post-examples-save-btn">Save</button>
+        <div class="action-row" style="margin-top: 6px; margin-bottom: 8px;">
+          <button class="btn-outline" id="voice-restore-btn">Restore Defaults</button>
         </div>
+
+        <hr class="separator" />
+
+        <div class="settings-label">Your Examples:</div>
+        <div class="section-hint" style="margin-bottom: 8px;">Style references only, never facts to reuse. Separate examples with a line containing only ---. Leave a box empty to skip that set.</div>
+        <div class="tab-row" role="tablist" aria-label="Voice examples">
+          <button class="tab-btn" id="examples-tab-post" role="tab" aria-selected="true" aria-controls="examples-panel-post">Post Examples</button>
+          <button class="tab-btn" id="examples-tab-reply" role="tab" aria-selected="false" aria-controls="examples-panel-reply" tabindex="-1">Reply Examples</button>
+        </div>
+        <div class="tab-panel" id="examples-panel-post" role="tabpanel" aria-labelledby="examples-tab-post">
+          <div class="section-hint" style="margin-bottom: 6px;">Used only by Draft Post. Paste a few of your own posts, short ones work best.</div>
+          <textarea id="post-examples-input" rows="4" spellcheck="false" placeholder="Paste a few example posts…"></textarea>
+          <div class="action-row">
+            <button class="btn-outline" id="post-examples-restore-btn">Restore Default</button>
+            <button class="btn-outline" id="post-examples-save-btn">Save</button>
+          </div>
+        </div>
+        <div class="tab-panel" id="examples-panel-reply" role="tabpanel" aria-labelledby="examples-tab-reply" hidden>
+          <div class="section-hint" style="margin-bottom: 6px;">Used only by Magic Reply. One pair per block: Post: their post, then Reply: your reply. Blocks without both labels are skipped.</div>
+          <textarea id="reply-examples-input" rows="5" spellcheck="false" placeholder="Post: their post&#10;Reply: your reply"></textarea>
+          <div class="action-row">
+            <button class="btn-outline" id="reply-examples-restore-btn">Restore Default</button>
+            <button class="btn-outline" id="reply-examples-save-btn">Save</button>
+          </div>
+        </div>
+
+        <div class="settings-label" style="margin-top: 14px;">Generate Voice from My Tweets:</div>
+        <div class="section-hint" style="margin-bottom: 6px;">Paste 5 to 10 of your own posts or replies, separated by blank lines. Your local model suggests a Persona and style; review them, then click Save Voice.</div>
+        <textarea id="voice-samples-input" rows="4" spellcheck="false" placeholder="Paste 5 to 10 of your posts or replies…"></textarea>
+        <button class="btn-outline" id="voice-generate-btn">Generate Voice from My Tweets</button>
+        <div class="section-hint" id="voice-generate-feedback" role="status" aria-live="polite"></div>
+
+        <details class="voice-advanced">
+          <summary>Advanced / Anti-Slop Rules</summary>
+          <div class="section-hint" style="margin-bottom: 8px;">The rules keep the writing human. Turn them off to send only your Persona and style; cleanup still removes dashes, Markdown, and hashtags (when off).</div>
+          <label class="checkbox-row" for="voice-rules-enabled">
+            <input type="checkbox" id="voice-rules-enabled" />
+            <span>Use the anti-slop rules</span>
+          </label>
+          <textarea id="voice-rules-input" rows="8" spellcheck="false" placeholder="Rules for how the model writes…"></textarea>
+          <div class="action-row" style="margin-bottom: 8px;">
+            <button class="btn-outline" id="voice-rules-import-btn">Import .md/.txt</button>
+            <button class="btn-outline" id="voice-rules-restore-btn">Restore Default</button>
+          </div>
+          <button class="btn-primary" id="voice-rules-save-btn">Save Rules</button>
+          <input type="file" accept=".md,.txt,text/markdown,text/plain" id="voice-rules-import-input" hidden />
+          <div class="section-hint" id="voice-rules-feedback" role="status" aria-live="polite"></div>
+        </details>
 
         <hr class="separator" />
 
@@ -897,7 +1037,7 @@
           <span>Auto</span>
         </div>
         <div class="range-value" id="reply-length-value">Balanced · up to 2 sentences, 25 words max</div>
-        <div class="section-hint" style="margin-bottom: 10px;">Applied to replies only, including prompts you edit. Draft Post length comes from your Writing Voice. Shorter replies read more like a real person; Auto lets the model choose the length for the post.</div>
+        <div class="section-hint" style="margin-bottom: 10px;">Applied to replies only, including prompts you edit. Draft Post length comes from your Persona and post cues. Shorter replies read more like a real person; Auto lets the model choose the length for the post.</div>
 
         <hr class="separator" />
 
@@ -905,16 +1045,29 @@
         <div class="input-row" style="margin-bottom: 8px;">
           <select id="tone-select" aria-label="Reply tone"></select>
         </div>
+        <label class="checkbox-row" for="tone-visible-toggle">
+          <input type="checkbox" id="tone-visible-toggle" />
+          <span>Show in the Magic Reply menu</span>
+        </label>
         <div class="settings-label" id="tone-prompt-label">Tone Instructions (Generic):</div>
-        <textarea id="tone-prompt-input" rows="6" placeholder="Tone instruction for this tone…"></textarea>
-        <div class="section-hint" style="margin-bottom: 6px;">Added after your Writing Voice. Keep it short; reply length is set above.</div>
-        <div class="input-row" style="margin-bottom: 4px;">
+        <textarea id="tone-prompt-input" rows="5" placeholder="Tone instruction for this tone…"></textarea>
+        <div class="section-hint" style="margin-bottom: 6px;">Added after your Persona and rules. Keep it short; reply length is set above.</div>
+        <div class="action-row" style="margin-bottom: 6px;">
           <button class="btn-outline" id="restore-tone-btn">Restore Default</button>
-          <button id="save-tone-btn">Save</button>
+          <button class="btn-outline btn-outline-danger" id="delete-tone-btn" hidden>Delete Tone</button>
         </div>
+        <button class="btn-primary" id="save-tone-btn">Save Tone</button>
+        <div class="section-hint" id="tone-feedback" role="status" aria-live="polite"></div>
+
+        <div class="settings-label" style="margin-top: 14px;">Add a Tone:</div>
+        <div class="input-row" style="margin-bottom: 8px;">
+          <input type="text" id="custom-tone-label-input" maxlength="32" placeholder="Tone name (for example Skeptical)" aria-label="Custom tone name" />
+        </div>
+        <textarea id="custom-tone-direction-input" rows="3" spellcheck="false" placeholder="How should this tone reply?"></textarea>
+        <button class="btn-outline" id="custom-tone-add-btn">Add Tone</button>
 
         <div class="settings-label" style="margin-top: 14px;">Export / Import:</div>
-        <div class="section-hint" style="margin-bottom: 8px;">Back up keywords, toggles, glow color, feed rules, reply length, writing voice, post examples, and tone instructions as JSON.</div>
+        <div class="section-hint" style="margin-bottom: 8px;">Back up keywords, toggles, glow color, feed rules, reply length, persona, style, anti-slop rules, post and reply examples, custom tones, and tone instructions as JSON.</div>
         <div class="action-row">
           <button class="btn-outline" id="export-btn">Export All</button>
           <button class="btn-outline" id="import-btn">Import</button>
