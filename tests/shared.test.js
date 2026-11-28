@@ -32,6 +32,9 @@ const EXPORTS = [
   'POST_CLOSER_INSTRUCTION',
   'POST_EXAMPLE_USER_PROMPT',
   'EXAMPLES_CAVEAT',
+  'MAX_EXAMPLE_TURNS',
+  'EXAMPLE_CHAR_BUDGET',
+  'countExampleCharacters',
   'POST_SOFT_LIMIT',
   'VOICE_GENERATION_LIMITS',
   'VOICE_FROM_SAMPLES_SYSTEM',
@@ -73,6 +76,8 @@ const EXPORTS = [
   'resolveToneList',
   'sanitizeHiddenToneIds',
   'resolveVisibleTones',
+  'resolveToneFallbackId',
+  'resolveImportedToneState',
   'resolveToneInstruction',
   'resolveTonePrompts',
   'parseGeneratedVoice',
@@ -302,6 +307,45 @@ test('parsePostExamples builds assistant style turns and caps the count', () => 
   assert.equal(S.parsePostExamples('').length, 0);
 });
 
+test('few-shot examples stay within the turn and character budget', () => {
+  assert.equal(S.MAX_EXAMPLE_TURNS, 6);
+  assert.ok(S.EXAMPLE_CHAR_BUDGET > 0);
+
+  // The shipped defaults must never be trimmed by the budget.
+  assert.ok(
+    S.countExampleCharacters(S.parsePostExamples(S.DEFAULT_POST_EXAMPLES))
+      <= S.EXAMPLE_CHAR_BUDGET
+  );
+  assert.ok(
+    S.countExampleCharacters(S.parseReplyExamples(S.DEFAULT_REPLY_EXAMPLES))
+      <= S.EXAMPLE_CHAR_BUDGET
+  );
+
+  const postBlocks = Array.from({ length: 8 }, (_, i) => `post ${i} ${'x'.repeat(700)}`);
+  const postTurns = S.parsePostExamples(postBlocks.join('\n\n---\n\n'));
+  assert.ok(postTurns.length > 0 && postTurns.length <= S.MAX_EXAMPLE_TURNS);
+  assert.ok(S.countExampleCharacters(postTurns) <= S.EXAMPLE_CHAR_BUDGET);
+  for (const turn of postTurns) {
+    assert.ok(postBlocks.includes(turn.assistant), 'only whole post examples are sent');
+  }
+
+  const replyBlocks = Array.from({ length: 8 }, (_, i) =>
+    `Post: p${i} ${'x'.repeat(700)}\nReply: reply ${i} ${'y'.repeat(700)}`
+  );
+  const replyTurns = S.parseReplyExamples(replyBlocks.join('\n\n---\n\n'));
+  assert.ok(replyTurns.length > 0 && replyTurns.length <= S.MAX_EXAMPLE_TURNS);
+  assert.ok(S.countExampleCharacters(replyTurns) <= S.EXAMPLE_CHAR_BUDGET);
+  for (const turn of replyTurns) {
+    assert.ok(turn.user.endsWith('x'.repeat(700)), 'the whole example post is kept');
+    assert.ok(turn.assistant.endsWith('y'.repeat(700)), 'the whole example reply is kept');
+  }
+
+  // An oversized block is skipped without discarding a later short one.
+  const oversized = 'x'.repeat(S.EXAMPLE_CHAR_BUDGET + 1);
+  const mixed = `${oversized}\n\n---\n\nsmall post`;
+  assert.deepEqual([...S.parsePostExamples(mixed).map((turn) => turn.assistant)], ['small post']);
+});
+
 test('composeReplySystemPrompt orders persona, style, rules, cues, and tone once', () => {
   const generic = tone('generic');
   const prompt = S.composeReplySystemPrompt({}, generic.direction);
@@ -424,6 +468,30 @@ test('cleanReply and cleanPost normalize em and en dashes deterministically', ()
   assert.equal(S.normalizeDashes('1—5'), '1-5');
 });
 
+test('dash cleanup leaves CLI flags, tech terms, and negative numbers alone', () => {
+  // ASCII hyphens are not dash punctuation, so technical text must survive both
+  // the Markdown pass and dash normalization.
+  const samples = [
+    'Run npm test -- --watch',
+    'Use --no-cache and --flag=true',
+    'Set max-old-space-size=4096',
+    'Try node.js and react-dom/client',
+    'It dropped to -5 or -3.5',
+    'C++ and C# and .NET 8',
+    'version 1.8.0-rc.1',
+    'const total = -1;',
+  ];
+
+  for (const sample of samples) {
+    assert.equal(S.normalizeDashes(sample), sample);
+    assert.equal(S.cleanReply(sample), sample);
+    assert.equal(S.cleanPost(sample), sample);
+  }
+
+  assert.equal(S.cleanPost('--flag\n-5\nnode.js'), '--flag\n-5\nnode.js');
+  assert.equal(S.cleanReply('Keep --dry-run for -2 retries.'), 'Keep --dry-run for -2 retries.');
+});
+
 test('cleanReply strips Markdown and hashtags, and keeps hashtags when allowed', () => {
   assert.equal(S.cleanReply('**Great** point #AI'), 'Great point');
   assert.equal(S.cleanReply('**Great** point #AI', { allowHashtags: true }), 'Great point #AI');
@@ -518,6 +586,52 @@ test('hidden tone ids are sanitized and at least one tone stays visible', () => 
   const custom = [{ id: 'custom-x', label: 'X', direction: 'Do X.' }];
   assert.ok(S.resolveVisibleTones(custom, []).some((item) => item.id === 'custom-x'));
   assert.ok(!S.resolveVisibleTones(custom, ['custom-x']).some((item) => item.id === 'custom-x'));
+});
+
+test('deleting the selected custom tone falls back to a visible built-in', () => {
+  const custom = [{ id: 'custom-x', label: 'X', direction: 'Do X.' }];
+  assert.equal(S.resolveToneFallbackId(custom, []), 'generic');
+
+  // Generic hidden: pick the first visible built-in instead of a hidden one.
+  const hiddenExceptAgree = S.TONES
+    .map((item) => item.id)
+    .filter((id) => id !== 'agree');
+  assert.equal(S.resolveToneFallbackId(custom, hiddenExceptAgree), 'agree');
+
+  // Deleting the only visible custom tone unwinds an all-hidden list to Generic.
+  const hiddenAllBuiltIns = S.TONES.map((item) => item.id);
+  assert.equal(S.resolveToneFallbackId([], hiddenAllBuiltIns), 'generic');
+});
+
+test('version 5 imports keep existing custom tones and version 6 imports replace them', () => {
+  const current = [{ id: 'custom-keep', label: 'Keep', direction: 'Keep this.' }];
+
+  const v5 = S.resolveImportedToneState(
+    { version: 5, voice: 'Old voice.', tonePrompts: { generic: 'Old generic.' } },
+    current,
+    ['custom-keep']
+  );
+  assert.equal(v5.changed, false);
+  assert.deepEqual([...v5.customTones.map((item) => item.id)], ['custom-keep']);
+  assert.deepEqual([...v5.hiddenToneIds], ['custom-keep']);
+
+  // A version 6 file without tone arrays also leaves local tones untouched.
+  const v6WithoutTones = S.resolveImportedToneState({ version: 6 }, current, []);
+  assert.equal(v6WithoutTones.changed, false);
+  assert.deepEqual([...v6WithoutTones.customTones.map((item) => item.id)], ['custom-keep']);
+
+  const v6 = S.resolveImportedToneState(
+    {
+      version: 6,
+      customTones: [{ id: 'custom-new', label: 'New', direction: 'Do new.' }],
+      hiddenToneIds: ['custom-keep', 'custom-new', 'unknown'],
+    },
+    current,
+    ['custom-keep']
+  );
+  assert.equal(v6.changed, true);
+  assert.deepEqual([...v6.customTones.map((item) => item.id)], ['custom-new']);
+  assert.deepEqual([...v6.hiddenToneIds], ['custom-new']);
 });
 
 test('resolveTonePrompts resolves built-in and custom instructions', () => {

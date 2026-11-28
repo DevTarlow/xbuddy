@@ -132,7 +132,7 @@ Matching posts use the new color immediately, and the choice survives reloads.
 2. Click **Export All** to download `xbuddy-config.json`
 3. On another browser, click **Import** and pick that file
 
-A full config restore replaces the current keyword lists, toggles, glow color, feed rules, reply length, Persona, style toggles, anti-slop rules, post and reply examples, custom tones, and tone instructions, and updates the non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them. Version 5 configs still import: their `voice` value becomes your Persona, and the rest of your voice settings are left alone.
+A full config restore replaces the current keyword lists, toggles, glow color, feed rules, reply length, Persona, style toggles, anti-slop rules, post and reply examples, custom tones, and tone instructions, and updates the non-secret LLM settings (server URL, model, and generation options). The API key is never included in exports or imports. Older files that contain only `positive` and/or `negative` arrays are merged into the current lists instead of replacing them. Version 5 configs still import: their `voice` value becomes your Persona, the rest of your voice settings are left alone, and custom tones already on this browser are kept.
 
 ### Add a keyword from the page
 
@@ -200,7 +200,7 @@ The setting applies to replies only, including tone instructions you edit. Draft
 
 The built-in Persona is a starter you can keep or replace. It writes the way a person talks: casual, practical, and conversational, with concrete details and honest tradeoffs. The style toggles are a short instruction on top of the Persona. Hashtags set to Off are also removed from the final text, and dashes and Markdown are always cleaned in code. The Persona is added before every tone instruction and before Draft Post, so editing it changes every AI draft.
 
-**Your Examples** are style references sent to the model as example turns, not facts to reuse. **Post Examples** are used only by Draft Post; **Reply Examples** are used only by Magic Reply. Separate examples with a line containing only `---`. Reply Examples use one `Post:` / `Reply:` pair per block, and blocks without both labels are skipped. Leave a box empty to skip that set. **Restore Default** brings the built-in examples back.
+**Your Examples** are style references sent to the model as example turns, not facts to reuse. **Post Examples** are used only by Draft Post; **Reply Examples** are used only by Magic Reply. Separate examples with a line containing only `---`. Reply Examples use one `Post:` / `Reply:` pair per block, and blocks without both labels are skipped. Leave a box empty to skip that set. To protect small-context models, only six examples and about 2,400 characters of example text are sent, and long sets are trimmed to whole examples rather than cut mid-example. **Restore Default** brings the built-in examples back.
 
 **Generate Voice from My Tweets** is the fast way to start: paste 5 to 10 of your own posts or replies, click the button, and your local model suggests a Persona and style. Review the result, then click **Save Voice**. It needs a saved model and sends the samples only to your local server.
 
@@ -215,7 +215,7 @@ An old single Writing Voice is handled automatically: a saved unedited default u
 3. Change the tone instruction, then click **Save Tone**
 4. Click **Restore Default** to put the built-in instruction back
 5. Uncheck **Show in the Magic Reply menu** to hide the tone; at least one tone stays visible
-6. To add a tone, enter a name and an instruction under **Add a Tone**, then click **Add Tone**. **Delete Tone** removes a custom tone
+6. To add a tone, enter a name and an instruction under **Add a Tone**, then click **Add Tone**. **Delete Tone** removes a custom tone and switches the editor to **Generic** or the first visible built-in tone
 
 Each tone's instruction is saved separately and added after your Persona and rules. The Magic Reply menu uses whatever instruction is saved for the tone you pick. Built-in instructions keep the reply on the poster's side; only **Disagree** offers a different view, and it opens with a plain disagreement instead of softening into agreement. If you saved an old built-in prompt without editing it, it now loads as the short instruction. If the intro was lightly edited but the instruction at the end still matches a built-in, the old intro is dropped so the voice is not added twice. Prompts you wrote yourself are kept. Click **Restore Default** to reset any tone.
 
@@ -254,6 +254,7 @@ Each tone's instruction is saved separately and added after your Persona and rul
 | Hashtags still appear | Set **Hashtags** to **Off** in **Your Persona**. Cleanup removes hashtags from the final text when it is off. If the old text is still there, click **Magic Reply** or **Draft Post** again; cleanup runs on new drafts. |
 | Nudge pills did not appear | They appear after a successful insert and dismiss when you click away, after about 30 seconds, or when the composer closes. Generate the draft again to bring them back. |
 | A custom tone is missing from the menu | Check **Show in the Magic Reply menu** under **Reply Tones**. At least one tone always stays visible. |
+| Some of my examples are not sent | Only six examples and about 2,400 characters of example text are sent per set. Shorten the examples, or remove a few so the ones you want fit. |
 | Tone menu does not open | Reload the extension at `chrome://extensions`; open X tabs reattach automatically. If the menu still does not appear, refresh x.com. The menu is injected next to the reply send button on the classic layout. |
 | Right-click menu is missing | Reload the extension at `chrome://extensions`. Chrome creates the menus on install and startup, so a fresh reload or browser restart picks them up. |
 | Features disappear after an extension update | X Buddy normally refreshes an open X tab to bring the new build in. A tab with an unsent draft is left alone; finish or clear the draft, then switch away and back, or refresh x.com. |
@@ -263,12 +264,12 @@ Each tone's instruction is saved separately and added after your Persona and rul
 
 - **A shorter voice that local models follow.** The built-in Persona, rules, and reply/post cues are trimmed to remove duplicate instructions. Formatting is enforced in code instead of repeated in the prompt.
 - **Your voice, split into parts.** Persona, style toggles (casing, emojis, hashtags, exclamation marks), Post and Reply Examples, and a collapsible Advanced rules block. Saved old Writing Voices upgrade automatically: an unedited default becomes the new Persona, and a hand-edited voice is kept as your Persona.
-- **Starter Reply Examples.** Four new Post/Reply pairs show the reply voice and are sent as real few-shot turns. Post Examples work the same way for Draft Post.
+- **Starter Reply Examples.** Four new Post/Reply pairs show the reply voice and are sent as real few-shot turns. Post Examples work the same way for Draft Post, capped at six turns and about 2,400 characters so a long custom set cannot crowd out the post on a 4k–8k model.
 - **Generate Voice from My Tweets.** Paste 5 to 10 of your own posts or replies and your local model suggests a Persona and style.
-- **Custom reply tones.** Add, edit, hide, and delete tones instead of being limited to the six built-ins.
+- **Custom reply tones.** Add, edit, hide, and delete tones instead of being limited to the six built-ins. Deleting the selected tone falls back to Generic or the first visible built-in tone.
 - **Nudge pills.** After Magic Reply or Draft Post inserts a draft, retry it, shorten it, make it more casual, or end it with a question in one click.
-- **Cleaner output.** Em/en dashes, Markdown, and hashtags (when off) are removed deterministically. A generated draft that uses a banned stock phrase gets one rewrite, then a clean strip.
-- **Config version 6.** Export/import carries the new fields; version 5 files still import their voice as the Persona.
+- **Cleaner output.** Em/en dashes, Markdown, and hashtags (when off) are removed deterministically, while CLI flags (`--flag`), hyphenated technical terms, and negative numbers are left alone. A generated draft that uses a banned stock phrase gets one rewrite, then a clean strip.
+- **Config version 6.** Export/import carries the new fields; version 5 files still import their voice as the Persona and keep any custom tones already on this browser.
 
 ## Status
 

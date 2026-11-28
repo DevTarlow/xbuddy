@@ -518,7 +518,16 @@ const POST_CLOSER_INSTRUCTION = 'End on the last useful point. Do not add a clos
 const POST_EXAMPLE_USER_PROMPT = 'Write one X post in my voice.';
 const REPLY_EXAMPLE_USER_PROMPT = 'Write a reply to this post:\n\n';
 const EXAMPLES_CAVEAT = 'Use the example posts and replies only as style references. Never copy their facts.';
+
+// Examples are style references, not thread context. Cap the turn count and the
+// combined message characters so a long custom set cannot crowd out the post on
+// a 4k-context local model. The built-in examples fit well under both caps.
 const MAX_EXAMPLE_TURNS = 6;
+const EXAMPLE_CHAR_BUDGET = 2400;
+
+function countExampleCharacters(turns) {
+  return turns.reduce((total, turn) => total + turn.user.length + turn.assistant.length, 0);
+}
 
 function normalizeVoicePersona(raw) {
   if (typeof raw !== 'string') return DEFAULT_VOICE_PERSONA;
@@ -677,9 +686,14 @@ function splitExampleBlocks(text) {
 
 function parsePostExamples(text) {
   const turns = [];
+  let used = 0;
   for (const block of splitExampleBlocks(text)) {
     if (turns.length >= MAX_EXAMPLE_TURNS) break;
-    turns.push({ user: POST_EXAMPLE_USER_PROMPT, assistant: block });
+    const turn = { user: POST_EXAMPLE_USER_PROMPT, assistant: block };
+    const chars = turn.user.length + turn.assistant.length;
+    if (used + chars > EXAMPLE_CHAR_BUDGET) continue;
+    turns.push(turn);
+    used += chars;
   }
   return turns;
 }
@@ -689,6 +703,7 @@ function parsePostExamples(text) {
 // accepted because people paste from notes.
 function parseReplyExamples(text) {
   const turns = [];
+  let used = 0;
   for (const block of splitExampleBlocks(text)) {
     if (turns.length >= MAX_EXAMPLE_TURNS) break;
     const cleanBlock = block.replace(/\*\*\s*(Post|Reply)\s*:\s*\*\*/gi, '$1:');
@@ -697,7 +712,11 @@ function parseReplyExamples(text) {
     const post = match[1].trim();
     const reply = match[2].trim();
     if (!post || !reply) continue;
-    turns.push({ user: `${REPLY_EXAMPLE_USER_PROMPT}${post}`, assistant: reply });
+    const turn = { user: `${REPLY_EXAMPLE_USER_PROMPT}${post}`, assistant: reply };
+    const chars = turn.user.length + turn.assistant.length;
+    if (used + chars > EXAMPLE_CHAR_BUDGET) continue;
+    turns.push(turn);
+    used += chars;
   }
   return turns;
 }
@@ -1067,6 +1086,43 @@ function resolveVisibleTones(customTones, hiddenIds) {
   return fallback ? [fallback] : [];
 }
 
+// The tone the popup should select after the current custom tone disappears
+// (deleted, or replaced by an import). Prefer Generic, then any visible tone,
+// so the editor never points at a stale id or an empty selection.
+function resolveToneFallbackId(customTones, hiddenIds) {
+  const visible = resolveVisibleTones(customTones, hiddenIds);
+  const fallback = visible.find((tone) => tone.id === DEFAULT_TONE_ID) || visible[0];
+  return fallback ? fallback.id : DEFAULT_TONE_ID;
+}
+
+// Version 5 configs predate custom tones. Importing one must not drop the
+// custom tones already on this browser; a version 6 config replaces them only
+// when it carries the arrays. Hidden ids are always sanitized against the
+// resulting list so at least one tone stays visible.
+function resolveImportedToneState(data, currentCustomTones, currentHiddenIds) {
+  const src = data && typeof data === 'object' ? data : {};
+  const version = Number(src.version) || 0;
+  const currentCustom = normalizeCustomTones(currentCustomTones);
+  const currentHidden = sanitizeHiddenToneIds(currentHiddenIds, currentCustom);
+
+  if (version < 6) {
+    return { customTones: currentCustom, hiddenToneIds: currentHidden, changed: false };
+  }
+
+  const customTones = Array.isArray(src.customTones)
+    ? normalizeCustomTones(src.customTones)
+    : currentCustom;
+  const hiddenToneIds = Array.isArray(src.hiddenToneIds)
+    ? sanitizeHiddenToneIds(src.hiddenToneIds, customTones)
+    : sanitizeHiddenToneIds(currentHidden, customTones);
+
+  return {
+    customTones,
+    hiddenToneIds,
+    changed: Array.isArray(src.customTones) || Array.isArray(src.hiddenToneIds),
+  };
+}
+
 // ===== Nudges =====
 // One-click steering for a draft. The ids are stable; content.js builds the
 // pills from this list and background.js resolves the instruction.
@@ -1213,6 +1269,9 @@ function countPostCharacters(text) {
   return Array.from(String(text || '')).length;
 }
 
+// Only en and em dashes are rewritten. ASCII hyphens are left alone, so CLI
+// flags (--flag), hyphenated tech terms (node.js, max-old-space-size), and
+// negative numbers (-5, -3.5) survive cleanup unchanged.
 function normalizeDashes(text) {
   return String(text || '')
     .replace(/(\d)\s*[–—]\s*(\d)/g, '$1-$2')
@@ -1223,16 +1282,23 @@ function normalizeDashes(text) {
     .replace(/,\s*,/g, ',');
 }
 
+// Remove stray spaces before punctuation without eating the space that starts a
+// token like .NET, .env, or file.js. Those dots are part of a word, not the end
+// of a sentence.
+function tightenPunctuationSpacing(text) {
+  return String(text || '').replace(/[ \t]+([,!?;:]|\.(?![\p{L}\p{N}]))/gu, '$1');
+}
+
 // Remove each whole standalone hashtag token. C#, #1, and URL fragments are
 // left alone because they are not hashtags at a token boundary.
 function stripHashtags(text) {
-  return String(text || '')
+  const stripped = String(text || '')
     .replace(/(^|[\s(\[{>"'“”])#([\p{L}_][\p{L}\p{N}_]*)/gu, '$1')
     .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+([.,!?;:])/g, '$1')
     .replace(/\n[ \t]+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  return tightenPunctuationSpacing(stripped);
 }
 
 function stripPostMarkdown(text) {
@@ -1256,13 +1322,13 @@ function stripOuterQuotes(text) {
 }
 
 function tidyCleanText(text) {
-  return String(text || '')
+  const tidied = String(text || '')
     .replace(/\r\n?/g, '\n')
     .replace(/[ \t]+$/gm, '')
     .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+([.,!?;:])/g, '$1')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  return tightenPunctuationSpacing(tidied);
 }
 
 function cleanReply(text, { allowHashtags = false } = {}) {

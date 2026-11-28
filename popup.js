@@ -277,6 +277,7 @@ function isToneHidden(id) {
 
 function getCurrentTone() {
   return allTones.find(tone => tone.id === currentToneId)
+    || allTones.find(tone => tone.id === resolveToneFallbackId(customTones, hiddenToneIds))
     || allTones.find(tone => tone.id === DEFAULT_TONE_ID)
     || allTones[0];
 }
@@ -405,7 +406,10 @@ async function deleteCurrentTone() {
   if (!confirm(`Delete the "${tone.label}" tone?`)) return;
 
   const nextCustom = customTones.filter(item => item.id !== tone.id);
-  const nextHidden = hiddenToneIds.filter(id => id !== tone.id);
+  const nextHidden = sanitizeHiddenToneIds(
+    hiddenToneIds.filter(id => id !== tone.id),
+    nextCustom
+  );
 
   const saved = await saveMany({
     [CUSTOM_TONES_KEY]: nextCustom,
@@ -423,7 +427,7 @@ async function deleteCurrentTone() {
   hiddenToneIds = nextHidden;
   allTones = resolveToneList(customTones);
   delete tonePrompts[tone.id];
-  currentToneId = DEFAULT_TONE_ID;
+  currentToneId = resolveToneFallbackId(nextCustom, nextHidden);
   populateToneSelector();
   updateToneEditor();
   showToast(`Deleted tone "${tone.label}"`);
@@ -1565,15 +1569,14 @@ async function importFullConfig(data) {
         toSet[REPLY_EXAMPLES_KEY] = resolveReplyExamples(examples);
       }
     }
-    if (Array.isArray(data.customTones)) {
-      toSet[CUSTOM_TONES_KEY] = normalizeCustomTones(data.customTones);
-    }
-    if (Array.isArray(data.hiddenToneIds)) {
-      const tonesForHidden = Array.isArray(data.customTones)
-        ? data.customTones
-        : customTones;
-      toSet[HIDDEN_TONES_KEY] = sanitizeHiddenToneIds(data.hiddenToneIds, tonesForHidden);
-    }
+  }
+
+  // A version 6 file carries custom tones and hidden ids. A version 5 file has
+  // neither, so keep the tones already on this browser instead of dropping them.
+  const importedTones = resolveImportedToneState(data, customTones, hiddenToneIds);
+  if (importedTones.changed) {
+    toSet[CUSTOM_TONES_KEY] = importedTones.customTones;
+    toSet[HIDDEN_TONES_KEY] = importedTones.hiddenToneIds;
   }
 
   if (data.version >= 5 && typeof data.postExamples === 'string') {
@@ -1585,9 +1588,7 @@ async function importFullConfig(data) {
     }
   }
 
-  const tonesForPrompts = resolveToneList(
-    Array.isArray(data.customTones) ? data.customTones : customTones
-  );
+  const tonesForPrompts = resolveToneList(importedTones.customTones);
   if (data.tonePrompts && typeof data.tonePrompts === 'object') {
     const resolvedPrompts = resolveTonePrompts(data.tonePrompts, tonesForPrompts);
     for (const tone of tonesForPrompts) {

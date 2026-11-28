@@ -146,6 +146,8 @@ function createBackground({
     POST_OUTPUT_INSTRUCTION,
     POST_CLOSER_INSTRUCTION,
     NUDGE_INSTRUCTIONS,
+    EXAMPLE_CHAR_BUDGET,
+    MAX_EXAMPLE_TURNS,
   };`, context);
 
   vm.runInContext(
@@ -353,6 +355,35 @@ test('generatePost sends post examples as turns and uses only the post cues', as
   assert.ok(finalUser.includes('A rough note'));
   assert.ok(finalUser.includes(env.shared.POST_OUTPUT_INSTRUCTION));
   assert.ok(finalUser.includes(env.shared.POST_CLOSER_INSTRUCTION));
+});
+
+test('oversized custom examples are trimmed to the few-shot budget', async () => {
+  const blocks = Array.from(
+    { length: 4 },
+    (_, i) => `Example ${i}. ${'x'.repeat(900)}`
+  );
+  const env = createBackground({
+    storage: defaultStorage({ xbBuddyPostExamples: blocks.join('\n\n---\n\n') }),
+    responses: ['Clean post.'],
+  });
+
+  await env.bg.generatePost('A rough note');
+
+  const body = env.requests[0].body;
+  const exampleMessages = body.messages.slice(1, -1);
+  assert.equal(exampleMessages.length % 2, 0);
+  assert.ok(exampleMessages.length >= 2, 'short examples still get through');
+  assert.ok(exampleMessages.length / 2 <= env.shared.MAX_EXAMPLE_TURNS);
+  assert.ok(body.messages.at(-1).content.includes('A rough note'));
+
+  const chars = exampleMessages.reduce((total, message) => total + message.content.length, 0);
+  assert.ok(
+    chars <= env.shared.EXAMPLE_CHAR_BUDGET,
+    `sent ${chars} example characters, budget ${env.shared.EXAMPLE_CHAR_BUDGET}`
+  );
+  for (const message of exampleMessages.filter((item) => item.role === 'assistant')) {
+    assert.ok(blocks.includes(message.content), 'only whole examples are sent');
+  }
 });
 
 test('a banned phrase triggers exactly one retry and returns the clean rewrite', async () => {
